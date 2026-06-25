@@ -1,6 +1,6 @@
 // STANCE — service worker. Caches the game shell so it loads instantly and works offline.
-// Bump CACHE_VERSION whenever you change the game so clients fetch the new build.
-const CACHE_VERSION = 'stance-v6';
+// ⮕ THIS IS THE ONLY PLACE TO BUMP THE VERSION. The game reads it from here at runtime.
+const CACHE_VERSION = 'stance-v7';
 const ASSETS = [
   './',
   'index.html',
@@ -9,6 +9,15 @@ const ASSETS = [
   'icon-512.png',
   'icon-512-maskable.png'
 ];
+
+// Reply to the page when it asks for the current version.
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'GET_VERSION') {
+    const port = event.ports && event.ports[0];
+    if (port) port.postMessage({ version: CACHE_VERSION });
+    else if (event.source) event.source.postMessage({ type: 'VERSION', version: CACHE_VERSION });
+  }
+});
 
 // Pre-cache the shell on install.
 self.addEventListener('install', (event) => {

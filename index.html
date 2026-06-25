@@ -308,8 +308,6 @@
 </div>
 
 <script>
-// bump this together with CACHE_VERSION in service-worker.js on every release
-const BUILD = 'v3';
 const cv = document.getElementById('game');
 const ctx = cv.getContext('2d');
 const VIEW = 240;
@@ -317,12 +315,31 @@ cv.width = cv.height = VIEW;
 ctx.imageSmoothingEnabled = false;
 const WORLD = 640;
 
-// version + input-type readout (helps confirm the right build loaded on each device)
+// Version + input-type readout. The version comes from the service worker
+// (single source of truth — only CACHE_VERSION in service-worker.js needs bumping).
 (function showVersionBadge(){
   const el=document.getElementById('verBadge');
   if(!el) return;
   const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-  el.textContent = 'STANCE '+BUILD+' · '+(coarse?'MOBILE (touch)':'DESKTOP (mouse/kbd)');
+  const device = coarse?'MOBILE (touch)':'DESKTOP (mouse/kbd)';
+  const render = (ver)=>{ el.textContent = 'STANCE '+ver+' · '+device; };
+  render('…');                         // until the SW answers
+  function askVersion(){
+    if(!('serviceWorker' in navigator)){ render('(no SW)'); return; }
+    const sw = navigator.serviceWorker.controller;
+    if(!sw){ render('(uncached)'); return; }   // page not yet controlled by the SW
+    try{
+      const ch = new MessageChannel();
+      ch.port1.onmessage = (e)=>{ if(e.data && e.data.version) render(e.data.version); };
+      sw.postMessage({ type:'GET_VERSION' }, [ch.port2]);
+    }catch(err){ render('(?)'); }
+  }
+  // ask now, and again once a controller takes over (first load installs the SW)
+  askVersion();
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.ready.then(askVersion);
+    navigator.serviceWorker.addEventListener('controllerchange', askVersion);
+  }
 })();
 
 const hud = document.getElementById('hud');
