@@ -50,6 +50,13 @@
     border:2px solid var(--grid);
     box-shadow:0 0 0 2px var(--void),0 0 40px rgba(61,220,151,.08);
   }
+  #verBadge{
+    position:absolute;top:3px;left:50%;transform:translateX(-50%);
+    font-family:'VT323',monospace;font-size:11px;letter-spacing:1px;
+    color:#4a5578;background:rgba(11,13,26,.6);
+    padding:1px 8px;border-radius:0 0 4px 4px;
+    pointer-events:none;z-index:50;white-space:nowrap;
+  }
 
   /* ---------- in-game HUD ---------- */
   #hud{
@@ -244,6 +251,7 @@
 <body>
 <div id="wrap">
   <canvas id="game" width="240" height="240"></canvas>
+  <div id="verBadge">…</div>
 
   <div id="hud">
     <div class="corner tl"></div><div class="corner tr"></div>
@@ -300,12 +308,22 @@
 </div>
 
 <script>
+// bump this together with CACHE_VERSION in service-worker.js on every release
+const BUILD = 'v3';
 const cv = document.getElementById('game');
 const ctx = cv.getContext('2d');
 const VIEW = 240;
 cv.width = cv.height = VIEW;
 ctx.imageSmoothingEnabled = false;
 const WORLD = 640;
+
+// version + input-type readout (helps confirm the right build loaded on each device)
+(function showVersionBadge(){
+  const el=document.getElementById('verBadge');
+  if(!el) return;
+  const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  el.textContent = 'STANCE '+BUILD+' · '+(coarse?'MOBILE (touch)':'DESKTOP (mouse/kbd)');
+})();
 
 const hud = document.getElementById('hud');
 const hpFill = document.querySelector('#hpBar i');
