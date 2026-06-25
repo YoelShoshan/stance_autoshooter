@@ -2,7 +2,7 @@
   "name": "STANCE — auto-shooter",
   "short_name": "STANCE",
   "description": "A retro pixel auto-shooter where you switch between offense and a reflecting shield. Clear polygon sectors and beat the bosses.",
-  "start_url": "stance-shooter.html",
+  "start_url": "index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

@@ -2,7 +2,7 @@
 // Bump CACHE_VERSION whenever you change the game so clients fetch the new build.
 const CACHE_VERSION = 'stance-v1';
 const ASSETS = [
-  'stance-shooter.html',
+  'index.html',
   'manifest.json',
   'icon-192.png',
   'icon-512.png',
