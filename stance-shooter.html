@@ -1,0 +1,1729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>STANCE — auto-shooter</title>
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0b0d1a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="STANCE">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
+  :root{
+    --void:#0b0d1a;
+    --grid:#161b33;
+    --off:#ff5d6c;
+    --def:#3ddc97;
+    --amber:#ffc857;
+    --ink:#e7ecf5;
+    --dim:#5a6488;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--void);
+    color:var(--ink);
+    font-family:'VT323',monospace;
+    display:flex;align-items:center;justify-content:center;
+    overflow:hidden;
+    -webkit-user-select:none;user-select:none;
+    touch-action:none;
+  }
+  #wrap{
+    position:relative;
+    width:min(100vw,100vh);
+    height:min(100vw,100vh);
+    max-width:720px;max-height:720px;
+  }
+  canvas{
+    display:block;width:100%;height:100%;
+    image-rendering:pixelated;
+    image-rendering:crisp-edges;
+    background:var(--void);
+    border:2px solid var(--grid);
+    box-shadow:0 0 0 2px var(--void),0 0 40px rgba(61,220,151,.08);
+  }
+
+  /* ---------- in-game HUD ---------- */
+  #hud{
+    position:absolute;inset:0;pointer-events:none;
+    font-size:clamp(16px,3.4vw,26px);
+    text-shadow:0 2px 0 #000;line-height:1;
+    display:none;
+  }
+  #hud.on{display:block}
+  .row{position:absolute;left:14px;display:flex;align-items:center;gap:10px}
+  #stanceTag{top:42px;font-size:clamp(20px,4.6vw,34px);letter-spacing:2px}
+  #wave{position:absolute;top:12px;right:16px;color:var(--dim)}
+  #score{position:absolute;top:42px;right:16px;color:var(--amber);font-size:clamp(20px,4.6vw,32px)}
+  #levelName{position:absolute;top:12px;left:14px;color:var(--dim);letter-spacing:1px}
+
+  /* boss-approach progress (segments = waves, fills as you advance) */
+  #bossProg{
+    position:absolute;top:64px;right:16px;display:none;
+    align-items:center;gap:5px;
+  }
+  #bossProg.on{display:flex}
+  #bossProg .skull{
+    font-size:clamp(16px,3.6vw,22px);line-height:1;color:var(--dim);
+    text-shadow:0 1px 0 #000;transition:color .2s,transform .2s;order:2;
+  }
+  #bossProg.near .skull{color:var(--off);transform:scale(1.2)}
+  #segs{display:flex;gap:3px;order:1}
+  .seg{
+    width:clamp(11px,2.6vw,17px);height:9px;background:#1a1f38;
+    border:1px solid #3a4575;position:relative;overflow:hidden;
+  }
+  .seg > i{position:absolute;inset:0;width:0;background:var(--amber);transition:width .15s linear}
+  .seg.done{border-color:var(--amber)}
+  .seg.done > i{width:100%}
+
+  /* gem counter */
+  #gemHud{
+    position:absolute;bottom:74px;right:16px;display:flex;align-items:center;gap:4px;
+    font-size:clamp(18px,4vw,26px);text-shadow:0 2px 0 #000;
+  }
+  #gemHud .gemIcon{color:#7dd3ff;font-size:clamp(16px,3.6vw,22px)}
+  #gemNum{color:var(--ink)}
+  #gemHud .gemGoal{color:var(--dim);font-size:clamp(14px,3vw,18px)}
+
+  /* upgrade shop */
+  #shop{justify-content:center;gap:18px;background:rgba(8,10,20,.95)}
+  .shopHead{text-align:center}
+  .shopTitle{font-size:clamp(36px,9vw,60px);letter-spacing:5px;color:var(--amber)}
+  .shopSub{color:var(--dim);font-size:clamp(15px,3.4vw,20px);letter-spacing:1px;margin-top:2px}
+  .cards{display:flex;flex-direction:column;gap:12px;width:100%;max-width:420px}
+  .card{
+    display:block;text-align:left;cursor:pointer;
+    background:rgba(22,27,51,.7);border:2px solid var(--grid);
+    box-shadow:none;padding:14px 16px;color:var(--ink);
+    font-family:inherit;letter-spacing:0;transition:border-color .1s,transform .05s,background .1s;
+  }
+  .card:hover{border-color:var(--def);background:rgba(28,34,64,.9)}
+  .card:active{transform:translateY(2px)}
+  .card .cicon{font-size:clamp(26px,6vw,38px);line-height:1;float:right;margin-left:10px}
+  .card .cname{font-size:clamp(20px,4.6vw,26px);letter-spacing:2px}
+  .card .cname .lvl{font-size:clamp(13px,3vw,16px);color:var(--amber);letter-spacing:1px}
+  .card .cdesc{font-size:clamp(14px,3.2vw,18px);color:var(--dim);line-height:1.25;margin-top:3px}
+
+  .bar{
+    position:absolute;left:14px;right:14px;height:14px;
+    background:#000;border:2px solid var(--grid);
+  }
+  .bar > i{display:block;height:100%;width:100%;transition:width .08s linear}
+  #hpBar{bottom:40px}
+  #hpBar i{background:var(--off)}
+  #staBar{bottom:18px}
+  #staBar i{background:var(--def)}
+  .barLabel{position:absolute;font-size:14px;color:var(--dim);text-shadow:0 1px 0 #000}
+  #hpLabel{bottom:54px;left:16px}
+  #staLabel{bottom:32px;left:16px}
+
+  /* boss bar */
+  #bossWrap{position:absolute;top:74px;left:24px;right:24px;display:none}
+  #bossWrap.on{display:block}
+  #bossName{font-size:clamp(16px,3.6vw,24px);color:var(--amber);letter-spacing:3px;text-align:center;margin-bottom:3px}
+  #bossBar{height:10px;background:#000;border:2px solid var(--amber)}
+  #bossBar i{display:block;height:100%;background:var(--off);width:100%;transition:width .1s linear}
+
+  /* ---------- screens ---------- */
+  .screen{
+    position:absolute;inset:0;
+    background:rgba(11,13,26,.92);
+    display:flex;flex-direction:column;align-items:center;
+    text-align:center;padding:22px;pointer-events:auto;overflow:hidden;
+  }
+  .screen.hidden{display:none}
+
+  #title{justify-content:center;gap:18px}
+  h1{font-size:clamp(54px,15vw,120px);letter-spacing:6px;line-height:.9}
+  h1 .o{color:var(--off)} h1 .d{color:var(--def)}
+  .tag{color:var(--amber);font-size:clamp(20px,4.6vw,30px);letter-spacing:2px}
+  .help{color:var(--dim);font-size:clamp(15px,3.4vw,21px);max-width:470px;line-height:1.35}
+  .help b{color:var(--ink)} .help .o{color:var(--off)} .help .d{color:var(--def)}
+  .key{color:var(--def)}
+
+  button{
+    font-family:inherit;cursor:pointer;
+    background:var(--off);color:#1a0c10;border:none;
+    padding:12px 30px;font-size:clamp(22px,5vw,32px);letter-spacing:3px;
+    box-shadow:0 5px 0 #b13a47;transition:transform .05s,box-shadow .05s;
+  }
+  button:active{transform:translateY(4px);box-shadow:0 1px 0 #b13a47}
+  button.ghost{background:transparent;color:var(--def);box-shadow:none;border:2px solid var(--def);padding:8px 22px;font-size:clamp(16px,3.6vw,22px)}
+  button.ghost:active{transform:translateY(2px)}
+
+  #select{justify-content:flex-start;gap:0}
+  #select h2{font-size:clamp(30px,8vw,56px);letter-spacing:4px;margin-top:6px}
+  #select .sub{color:var(--dim);font-size:clamp(15px,3.4vw,20px);margin-bottom:14px;letter-spacing:1px}
+  #levelList{display:flex;flex-direction:column;gap:12px;width:100%;max-width:430px;overflow-y:auto;padding:4px 2px 12px}
+  .lvl{
+    display:flex;align-items:center;gap:14px;
+    border:2px solid var(--grid);background:rgba(22,27,51,.5);
+    padding:12px 14px;cursor:pointer;text-align:left;
+    transition:border-color .1s,background .1s;
+  }
+  .lvl.open:hover{border-color:var(--def)}
+  .lvl.open:active{transform:translateY(2px)}
+  .lvl.locked{opacity:.4;cursor:not-allowed}
+  .lvl.cleared{border-color:#2c6b4f}
+  .lvl .num{font-size:clamp(28px,7vw,44px);width:40px;text-align:center;flex:none;color:var(--amber)}
+  .lvl.locked .num{color:var(--dim)}
+  .lvl .face{flex:none;width:30px;height:30px}
+  .lvl.locked .face{opacity:.5;filter:grayscale(1)}
+  .lvl .meta{flex:1;min-width:0}
+  .lvl .nm{font-size:clamp(20px,4.6vw,28px);letter-spacing:1px;color:var(--ink)}
+  .lvl .ds{font-size:clamp(13px,3vw,17px);color:var(--dim);line-height:1.2}
+  .lvl .badge{font-size:clamp(13px,3vw,17px);flex:none;letter-spacing:1px}
+  .lvl .badge.lock{color:var(--dim)}
+  .lvl .badge.star{color:var(--amber)}
+  .swatch{width:8px;align-self:stretch;flex:none}
+
+  #overlay{justify-content:center;gap:16px}
+  .gostat{color:var(--ink);font-size:clamp(22px,5vw,30px)}
+  .gostat b{color:var(--amber)}
+  .btnRow{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+
+  #stanceBtn{
+    position:absolute;bottom:78px;right:16px;width:84px;height:84px;border-radius:50%;
+    border:3px solid var(--def);background:rgba(61,220,151,.12);
+    color:var(--def);font-size:18px;letter-spacing:1px;
+    display:none;align-items:center;justify-content:center;text-align:center;line-height:1.05;
+    pointer-events:auto;box-shadow:0 4px 0 rgba(0,0,0,.5);
+  }
+  #stanceBtn:active{transform:translateY(3px)}
+  @media (pointer:coarse){ #stanceBtn.show{display:flex} }
+
+  .corner{position:absolute;width:10px;height:10px;border:2px solid var(--grid);pointer-events:none}
+  .corner.tl{top:6px;left:6px;border-right:0;border-bottom:0}
+  .corner.tr{top:6px;right:6px;border-left:0;border-bottom:0}
+  .corner.bl{bottom:6px;left:6px;border-right:0;border-top:0}
+  .corner.br{bottom:6px;right:6px;border-left:0;border-top:0}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="240" height="240"></canvas>
+
+  <div id="hud">
+    <div class="corner tl"></div><div class="corner tr"></div>
+    <div class="corner bl"></div><div class="corner br"></div>
+    <div id="levelName">LEVEL</div>
+    <div id="stanceTag" class="row">◆ OFFENSE</div>
+    <div id="wave">WAVE 1</div>
+    <div id="score">0</div>
+    <div id="bossProg"><span class="skull">☠</span><div id="segs"></div></div>
+    <div id="bossWrap"><div id="bossName">BOSS</div><div id="bossBar"><i></i></div></div>
+    <div id="gemHud"><span class="gemIcon">◆</span><span id="gemNum">0</span><span class="gemGoal" id="gemGoalNum">/18</span></div>
+    <div class="barLabel" id="hpLabel">HULL</div>
+    <div class="bar" id="hpBar"><i></i></div>
+    <div class="barLabel" id="staLabel">STAMINA</div>
+    <div class="bar" id="staBar"><i></i></div>
+  </div>
+  <button id="stanceBtn">HOLD<br>SHIELD</button>
+
+  <div id="shop" class="screen hidden"></div>
+
+  <div id="title" class="screen">
+    <h1><span class="o">STA</span><span class="d">NCE</span></h1>
+    <div class="tag">an auto-shooter with two minds</div>
+    <div class="help">
+      You fire on your own. Your job is to <b>move</b> and to <b>switch which version of yourself you are</b>.<br><br>
+      <span class="o">◆ OFFENSE</span> — guns blaze, full damage taken.<br>
+      <span class="d">▣ DEFENSE</span> — a shield eats &amp; reflects bullets, but you stop firing. Burns stamina.<br><br>
+      <b>Move:</b> <span class="key">WASD / arrows</span> or drag &nbsp;·&nbsp;
+      <b>Stance:</b> <span class="key">SPACE / SHIFT</span> or hold the button<br>
+      <span style="color:#7dd3ff">collect gems to unlock upgrades</span> · <span style="color:#3a4060">M to mute</span>
+    </div>
+    <button id="startBtn">BEGIN</button>
+  </div>
+
+  <div id="select" class="screen hidden">
+    <h2>SELECT SECTOR</h2>
+    <div class="sub" id="selSub">clear a sector to unlock the next</div>
+    <div id="levelList"></div>
+  </div>
+
+  <div id="overlay" class="screen hidden"></div>
+</div>
+
+<script>
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+const VIEW = 240;
+cv.width = cv.height = VIEW;
+ctx.imageSmoothingEnabled = false;
+const WORLD = 640;
+
+const hud = document.getElementById('hud');
+const hpFill = document.querySelector('#hpBar i');
+const staFill = document.querySelector('#staBar i');
+const stanceTag = document.getElementById('stanceTag');
+const waveEl = document.getElementById('wave');
+const scoreEl = document.getElementById('score');
+const bossProg = document.getElementById('bossProg');
+const segsEl = document.getElementById('segs');
+const levelNameEl = document.getElementById('levelName');
+const bossWrap = document.getElementById('bossWrap');
+const bossNameEl = document.getElementById('bossName');
+const bossFill = document.querySelector('#bossBar i');
+const stanceBtn = document.getElementById('stanceBtn');
+
+const titleScreen = document.getElementById('title');
+const selectScreen = document.getElementById('select');
+const overlay = document.getElementById('overlay');
+const levelList = document.getElementById('levelList');
+const shopScreen = document.getElementById('shop');
+const gemNumEl = document.getElementById('gemNum');
+const gemGoalEl = document.getElementById('gemGoalNum');
+document.getElementById('startBtn').onclick = openSelect;
+
+// ===================================================================
+// ENEMY KINDS — keyed by polygon edge count. Each edge count has its
+// own color + distinct behavior. A "triangle" behaves like a triangle
+// no matter which level it shows up in. edges:0 means circle (level 10).
+// ===================================================================
+const ENEMY_KINDS = {
+  // edges : { name, color, r, hp, spd, pts, behavior, fire }
+  3:  { name:'TRIAD',    color:'#ff5d6c', r:5, hp:2,  spd:.95, pts:100, behavior:'dart',    fire:'none'   }, // fast zig-zag chaser, no shooting
+  4:  { name:'WARDEN',   color:'#7dd3ff', r:6, hp:4,  spd:.30, pts:150, behavior:'march',   fire:'aimed'  }, // slow, fires aimed shots
+  5:  { name:'STAR',     color:'#ffc857', r:6, hp:5,  spd:.45, pts:200, behavior:'strafe',  fire:'spread' }, // orbits you, shotgun spread
+  6:  { name:'COMB',     color:'#3ddc97', r:7, hp:7,  spd:.35, pts:260, behavior:'march',   fire:'twin'   }, // tanky, twin parallel shots
+  7:  { name:'SEPTRON',  color:'#c77dff', r:6, hp:6,  spd:.55, pts:320, behavior:'orbit',   fire:'ring'   }, // circles at range, bursts rings
+  8:  { name:'OCTANT',   color:'#ff9f45', r:8, hp:10, spd:.28, pts:400, behavior:'march',   fire:'quad'   }, // heavy, fires 4-way cross
+  9:  { name:'ENNEAD',   color:'#5ad1 e', r:7, hp:9,  spd:.62, pts:460, behavior:'strafe',  fire:'lead'   }, // strafes & leads its shots
+  10: { name:'DECABOR',  color:'#ff6ba8', r:8, hp:12, spd:.40, pts:540, behavior:'orbit',   fire:'spiral' }, // spins, spiral fire
+  11: { name:'HENDEC',   color:'#9bff5a', r:8, hp:14, spd:.50, pts:620, behavior:'dart',    fire:'aimed'  }, // big fast darter that also shoots
+  0:  { name:'OMNI',     color:'#ffffff', r:7, hp:11, spd:.70, pts:700, behavior:'orbit',   fire:'spiral' }, // circle: smooth orbiter, relentless
+};
+// fix a typo'd color
+ENEMY_KINDS[9].color='#5ad1ee';
+
+const POLY_NAMES = {3:'TRIANGLES',4:'SQUARES',5:'PENTAGONS',6:'HEXAGONS',7:'HEPTAGONS',8:'OCTAGONS',9:'NONAGONS',10:'DECAGONS',11:'11-GONS',0:'CIRCLES'};
+
+// per-level cosmetics + boss flavor, indexed 0..9
+const LEVEL_THEME = [
+  { name:'FLATLAND',      bg:'#170d0c', accent:'#ff5d6c', star:'#3a1c1c', boss:'TRINE' },
+  { name:'FOUR CORNERS',  bg:'#0c1018', accent:'#7dd3ff', star:'#1c2c3a', boss:'QUADRANT' },
+  { name:'PENTACLE',      bg:'#1a1408', accent:'#ffc857', star:'#3a3320', boss:'PENTARCH' },
+  { name:'HONEYCOMB',     bg:'#0a1410', accent:'#3ddc97', star:'#1c3a2c', boss:'HEXLORD' },
+  { name:'SEVENFOLD',     bg:'#12091a', accent:'#c77dff', star:'#2c1c3a', boss:'SEPTAGON PRIME' },
+  { name:'OCTAVE',        bg:'#160d05', accent:'#ff9f45', star:'#3a2410', boss:'OCTARCH' },
+  { name:'ENNEAGRAM',     bg:'#06141a', accent:'#5ad1ee', star:'#103038', boss:'NINEFOLD' },
+  { name:'DECAGRAM',      bg:'#1a0814', accent:'#ff6ba8', star:'#380a28', boss:'DECABOSS' },
+  { name:'ULTRAGON',      bg:'#0f1a05', accent:'#9bff5a', star:'#243a10', boss:'HENDECARCH' },
+  { name:'THE LIMIT',     bg:'#05060d', accent:'#ffffff', star:'#2a2a3a', boss:'PERIGEE' }, // circle = ∞ edges
+];
+
+// build 10 levels. level i (0-based) headline edge = i+3, except level 9 = circle (0)
+const LEVELS = LEVEL_THEME.map((th,i)=>{
+  const headline = (i===9) ? 0 : i+3;
+  // enemy pool: this level's polygon + every previous level's polygon
+  const pool=[];
+  for(let j=0;j<=i;j++) pool.push(j===9?0:j+3);
+  const polyWord = POLY_NAMES[headline];
+  return {
+    name: th.name,
+    desc: `${polyWord.toLowerCase()} · ${3+i} waves`,
+    bg: th.bg, accent: th.accent, star: th.star,
+    waves: 3+i,
+    baseCount: 3+i,
+    perWave: 1+Math.floor(i/3),
+    hpMul: 1 + i*0.13,
+    spdMul: 1 + i*0.055,
+    pool,                 // edge counts that can spawn
+    headline,             // the level's signature polygon
+    boss:{ name: th.boss, edges: headline, hp: 60 + i*42, r: 17 + Math.floor(i/2)*2,
+           color: th.accent, pattern: BOSS_PATTERN_FOR(headline), rate: BOSS_RATE_FOR(headline),
+           moons: headline===0?6:0 }
+  };
+});
+
+function BOSS_PATTERN_FOR(edges){
+  // give each boss a pattern flavored by its polygon
+  if(edges===0) return 'moons';      // circle boss = the orbiting moons fight
+  if(edges===3) return 'aimed';
+  if(edges===4) return 'spread';
+  if(edges===5) return 'spiral';
+  if(edges===6) return 'ring';
+  if(edges===7) return 'spiral';
+  if(edges===8) return 'ring';
+  if(edges===9) return 'mix';
+  if(edges>=10) return 'mix';
+  return 'aimed';
+}
+function BOSS_RATE_FOR(edges){
+  if(edges===5||edges===7) return 9;  // spiral patterns fire continuously
+  if(edges===0) return 40;
+  return Math.max(40, 70 - edges*2);
+}
+
+// ---- persistent progress (localStorage; falls back to memory in sandboxed previews) ----
+const SAVE_KEY = 'stance_save_v1';
+const DEBUG_UNLOCK_ALL = false;   // set true to open every level for testing
+
+let unlocked = 1;
+const cleared = new Set();
+let bestScore = 0;
+let prefMuted = false;
+
+function loadProgress(){
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if(raw){
+      const s = JSON.parse(raw);
+      if(typeof s.unlocked === 'number') unlocked = s.unlocked;
+      if(Array.isArray(s.cleared)) s.cleared.forEach(i=>cleared.add(i));
+      if(typeof s.bestScore === 'number') bestScore = s.bestScore;
+      if(typeof s.muted === 'boolean') prefMuted = s.muted;
+    }
+  } catch(e){ /* storage unavailable (e.g. sandbox) — stay in memory */ }
+  if(DEBUG_UNLOCK_ALL) unlocked = 99;
+}
+function saveProgress(){
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      unlocked, cleared:[...cleared], bestScore, muted:prefMuted
+    }));
+  } catch(e){ /* ignore */ }
+}
+loadProgress();
+
+const keys = {};
+let dragActive=false, lastDX=0, lastDY=0, dragDX=0, dragDY=0;
+let wantDefense=false;
+
+addEventListener('keydown', e=>{
+  if(e.repeat) return;
+  keys[e.key.toLowerCase()]=true;
+  if(e.key===' '||e.key==='Shift'){wantDefense=true;e.preventDefault();}
+  if(e.key.toLowerCase()==='h' && running && player){ player.hp=player.maxHp; player.flash=4; } // DEBUG: refill health
+  if(e.key.toLowerCase()==='k' && running){ for(let i=enemies.length-1;i>=0;i--) killEnemy(enemies[i]); } // DEBUG: clear all enemies
+  if(e.key.toLowerCase()==='m'){ prefMuted=SFX.toggle(); saveProgress(); }
+});
+addEventListener('keyup', e=>{
+  keys[e.key.toLowerCase()]=false;
+  if(e.key===' '||e.key==='Shift') wantDefense=false;
+});
+function canvasPos(ev){
+  const r=cv.getBoundingClientRect();
+  const t=ev.touches?ev.touches[0]:ev;
+  return { x:(t.clientX-r.left)/r.width*VIEW, y:(t.clientY-r.top)/r.height*VIEW };
+}
+function startDrag(ev){ dragActive=true; const p=canvasPos(ev); lastDX=p.x; lastDY=p.y; dragDX=0; dragDY=0; ev.preventDefault(); }
+function moveDrag(ev){ if(!dragActive) return; const p=canvasPos(ev); dragDX+=p.x-lastDX; dragDY+=p.y-lastDY; lastDX=p.x; lastDY=p.y; ev.preventDefault(); }
+function endDrag(){ dragActive=false; dragDX=0; dragDY=0; }
+cv.addEventListener('mousedown', startDrag);
+addEventListener('mousemove', moveDrag);
+addEventListener('mouseup', endDrag);
+cv.addEventListener('touchstart', startDrag, {passive:false});
+cv.addEventListener('touchmove', moveDrag, {passive:false});
+cv.addEventListener('touchend', endDrag);
+stanceBtn.addEventListener('touchstart', e=>{wantDefense=true;e.preventDefault();},{passive:false});
+stanceBtn.addEventListener('touchend', e=>{wantDefense=false;e.preventDefault();},{passive:false});
+stanceBtn.addEventListener('mousedown', ()=>wantDefense=true);
+stanceBtn.addEventListener('mouseup', ()=>wantDefense=false);
+
+// ===================================================================
+// SOUND — tiny WebAudio synth. Retro waveforms, soft envelopes,
+// slight pitch jitter so repeated sounds never feel identical.
+// ===================================================================
+const SFX = (()=>{
+  let ac=null, master=null, musicBus=null;
+  let muted=false;
+  const SFX_VOL=0.32, MUSIC_VOL=0.16;
+  function ensure(){
+    if(ac) return;
+    const AC = window.AudioContext||window.webkitAudioContext;
+    if(!AC) return;
+    ac = new AC();
+    master = ac.createGain();
+    master.gain.value = SFX_VOL;
+    // gentle high-shelf cut so square waves aren't harsh ("modern touch")
+    const lp = ac.createBiquadFilter();
+    lp.type='lowpass'; lp.frequency.value=5200; lp.Q.value=0.4;
+    master.connect(lp); lp.connect(ac.destination);
+    // separate quieter bus for background music, through its own softer filter
+    musicBus = ac.createGain();
+    musicBus.gain.value = MUSIC_VOL;
+    const mlp = ac.createBiquadFilter();
+    mlp.type='lowpass'; mlp.frequency.value=3800; mlp.Q.value=0.3;
+    musicBus.connect(mlp); mlp.connect(ac.destination);
+  }
+  function now(){ return ac.currentTime; }
+  const rnd=(a,b)=>a+Math.random()*(b-a);
+  const semis=n=>Math.pow(2,n/12);
+
+  // one synth voice: osc -> per-voice gain (envelope) -> master
+  function voice(type, freq, t0, dur, peak, {detune=0, slideTo=null, q=null}={}){
+    const o=ac.createOscillator();
+    o.type=type;
+    o.frequency.setValueAtTime(freq, t0);
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20,slideTo), t0+dur);
+    if(detune) o.detune.value=detune;
+    let node=o;
+    if(q){ const f=ac.createBiquadFilter(); f.type='bandpass'; f.frequency.value=freq; f.Q.value=q; o.connect(f); node=f; }
+    const g=ac.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(peak, t0+0.008);          // fast attack
+    g.gain.exponentialRampToValueAtTime(0.0008, t0+dur);     // smooth decay
+    node.connect(g); g.connect(master);
+    o.start(t0); o.stop(t0+dur+0.02);
+  }
+  // soft noise burst (for hits/explosions) via filtered buffer
+  function noise(t0, dur, peak, freq, q){
+    const len=Math.floor(ac.sampleRate*dur);
+    const buf=ac.createBuffer(1,len,ac.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*(1-i/len);
+    const src=ac.createBufferSource(); src.buffer=buf;
+    const f=ac.createBiquadFilter(); f.type='bandpass'; f.frequency.value=freq; f.Q.value=q;
+    const g=ac.createGain();
+    g.gain.setValueAtTime(peak,t0);
+    g.gain.exponentialRampToValueAtTime(0.0008,t0+dur);
+    src.connect(f); f.connect(g); g.connect(master);
+    src.start(t0); src.stop(t0+dur);
+  }
+
+  // ---- background music engine ----
+  // a music note played into the quieter music bus, with a soft pluck envelope
+  function mnote(type, freq, t0, dur, peak){
+    if(!freq) return;                         // freq 0 = rest
+    const o=ac.createOscillator(); o.type=type; o.frequency.setValueAtTime(freq,t0);
+    const g=ac.createGain();
+    g.gain.setValueAtTime(0,t0);
+    g.gain.linearRampToValueAtTime(peak,t0+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0008,t0+dur);
+    o.connect(g); g.connect(musicBus);
+    o.start(t0); o.stop(t0+dur+0.02);
+  }
+  // note-name → frequency
+  const NF={C:0,'C#':1,D:2,'D#':3,E:4,F:5,'F#':6,G:7,'G#':8,A:9,'A#':10,B:11};
+  function hz(name){                          // e.g. "A3", "C#4", "-" = rest
+    if(!name||name==='-') return 0;
+    const m=name.match(/^([A-G]#?)(\d)$/); if(!m) return 0;
+    const semi=NF[m[1]] + (parseInt(m[2])-4)*12;   // relative to C4
+    return 440*Math.pow(2,(semi-9)/12);            // A4=440
+  }
+
+  // Tracks: each is { bpm, bass:[...], lead:[...] } as step arrays (16th-ish steps).
+  // '-' = rest, otherwise note name. Lead and bass loop independently per track.
+  // ---- musical material ----
+  // root note per level so each sector has its own tonal color (cycle of moods)
+  const LEVEL_ROOTS = ['A','D','E','G','C','F','B','D','F','A'];
+  // a base 16-step phrase in scale degrees (0=root,2=2nd,4=3rd... minor-ish), -1 = rest
+  const BASE_BASS = [0,0,-1,0,4,-1,0,-1,5,5,-1,5,3,-1,7,-1];
+  const BASE_LEAD = [0,-1,4,0,7,-1,5,4,3,-1,5,7,4,-1,7,-1];   // degrees up high
+  // minor scale semitone offsets for degrees 0..7
+  const MINOR=[0,2,3,5,7,8,10,12];
+  function degHz(rootName, oct, deg){
+    if(deg<0) return 0;
+    const semi = NF[rootName] + (oct-4)*12 + MINOR[((deg%7)+7)%7] + Math.floor(deg/7)*12;
+    return 440*Math.pow(2,(semi-9)/12);
+  }
+
+  // density: as level rises, fill more of the rests in the lead → busier music
+  function densify(seq, intensity){          // intensity 0..1
+    return seq.map((d,i)=>{
+      if(d>=0) return d;
+      const fillChance = intensity*0.7;
+      // deterministic pseudo-fill based on index so the loop stays stable
+      const r=((i*2654435761)>>>0)/4294967295;
+      return r < fillChance ? (BASE_LEAD[(i+3)%16]>=0?BASE_LEAD[(i+3)%16]:4) : -1;
+    });
+  }
+
+  // build a level battle track (0-based level index)
+  function levelTrack(idx){
+    const root=LEVEL_ROOTS[idx]||'A';
+    const intensity=idx/9;                         // 0 (lvl1) .. 1 (lvl10)
+    const bpm=Math.round(112 + intensity*54);      // 112 → 166 bpm
+    const lead = densify(BASE_LEAD, intensity);
+    return {
+      bpm, step:0.25, root,
+      bass: BASE_BASS, lead,
+      arp: intensity>0.45,                          // extra arpeggio layer on later levels
+      drive: intensity,                             // controls percussion + bass octave doubling
+    };
+  }
+
+  // boss themes
+  const MENU_TRACK = { bpm:96, step:0.5, root:'A',
+    bass:[0,-1,4,-1,0,-1,2,-1,5,-1,2,-1,4,-1,3,-1],
+    lead:[0,-1,4,7,-1,4,3,-1,0,-1,-1,5,0,-1,4,-1], drive:0.15 };
+  const BOSS_TRACK = { bpm:150, step:0.25, root:'D', boss:true,
+    bass:[0,0,-1,0,0,-1,5,-1,3,3,-1,3,7,-1,5,-1],
+    lead:[0,3,5,3,7,-1,5,3,4,7,9,7,5,-1,3,-1], drive:0.8 };
+  // the FINAL boss (level 10): ethereal — slow, wide, shimmering, major-ish 7ths
+  const FINALE_TRACK = { bpm:84, step:0.5, root:'E', boss:true, ethereal:true,
+    // sparse floating bass, long shimmering lead in a brighter mode
+    bass:[0,-1,-1,-1,4,-1,-1,-1,2,-1,-1,-1,5,-1,-1,-1],
+    lead:[0,-1,4,-1,7,-1,9,-1,7,-1,4,-1,2,-1,4,-1], drive:0.2 };
+  const MAJ7=[0,2,4,7,9,11,12,14];                 // brighter scale for the ethereal theme
+
+  let musicName=null, musicTrack=null, musicTimer=null, mStep=0, mNextTime=0;
+  function scheduleMusic(){
+    if(!ac || !musicTrack) return;
+    const tr=musicTrack;
+    const stepDur=tr.step * (120/tr.bpm);
+    const lookahead=0.25;
+    const scale = tr.ethereal ? MAJ7 : MINOR;
+    const sHz=(oct,deg)=>{ if(deg<0)return 0; const semi=NF[tr.root]+(oct-4)*12+scale[((deg%7)+7)%7]+Math.floor(deg/7)*12; return 440*Math.pow(2,(semi-9)/12); };
+    while(mNextTime < ac.currentTime + lookahead){
+      const bi=mStep % tr.bass.length, li=mStep % tr.lead.length;
+      if(!muted){
+        if(tr.ethereal){
+          // long, soft, detuned pads + bell-like lead = "etheral and cool"
+          mnote('triangle', sHz(2,tr.bass[bi]), mNextTime, stepDur*2.4, 0.42);
+          const lf=sHz(5,tr.lead[li]);
+          if(lf){ mnote('sine', lf, mNextTime, stepDur*2.0, 0.30);
+                  mnote('sine', lf*1.003, mNextTime, stepDur*2.0, 0.16);   // shimmer detune
+                  mnote('triangle', lf*2, mNextTime, stepDur*1.2, 0.07); } // soft bell octave
+          // sparse high sparkle
+          if(mStep%8===2) mnote('sine', sHz(6,7), mNextTime, stepDur*1.5, 0.12);
+        } else {
+          // bass (octave-doubled when driving hard)
+          mnote('triangle', sHz(2,tr.bass[bi]), mNextTime, stepDur*0.95, 0.5);
+          if(tr.drive>0.6 && tr.bass[bi]>=0) mnote('triangle', sHz(3,tr.bass[bi]), mNextTime, stepDur*0.6, 0.2);
+          // lead
+          mnote('square', sHz(5,tr.lead[li]), mNextTime, stepDur*0.8, 0.26);
+          // arpeggio layer on busier tracks
+          if(tr.arp){ const ad=[0,4,7,4][mStep%4]; mnote('square', sHz(6,ad), mNextTime, stepDur*0.5, 0.12); }
+          // percussion: kick on the beat, hat off-beat, more with drive
+          if(mStep%4===0) noise(mNextTime,0.05,0.10+0.08*(tr.drive||0), 140, 1.2);
+          if(mStep%2===1) noise(mNextTime,0.03,0.05+0.06*(tr.drive||0), 2600, 1.0);
+          if((tr.drive>0.7) && mStep%4===2) noise(mNextTime,0.04,0.08, 900, 1.0); // extra snare-ish
+        }
+      }
+      mNextTime += stepDur; mStep++;
+    }
+  }
+
+  const api={
+    resume(){ ensure(); if(ac && ac.state==='suspended') ac.resume(); },
+    toggle(){ muted=!muted; if(master) master.gain.value=muted?0:SFX_VOL; if(musicBus) musicBus.gain.value=muted?0:MUSIC_VOL; return muted; },
+    setMuted(v){ muted=!!v; if(master) master.gain.value=muted?0:SFX_VOL; if(musicBus) musicBus.gain.value=muted?0:MUSIC_VOL; },
+    shoot(){
+      if(!ac||muted)return; const t=now();
+      const f=440*semis(rnd(-1.5,1.5));
+      voice('triangle', f, t, 0.06, 0.07, {slideTo:f*0.7});
+    },
+    reflect(){
+      if(!ac||muted)return; const t=now();
+      // bright "ting" — two stacked triangles, pitch wobble
+      const f=900*semis(rnd(-1,3));
+      voice('triangle', f, t, 0.16, 0.22, {slideTo:f*1.6});
+      voice('triangle', f*1.5, t, 0.12, 0.10, {detune:6});
+    },
+    hitEnemy(){
+      if(!ac||muted)return; const t=now();
+      noise(t,0.07,0.18, 1400*semis(rnd(-2,2)), 1.2);
+    },
+    kill(){
+      if(!ac||muted)return; const t=now();
+      noise(t,0.20,0.28, 600*semis(rnd(-2,2)), 0.8);
+      voice('square', 300*semis(rnd(-1,2)), t, 0.18, 0.12, {slideTo:120});
+    },
+    hurt(){
+      if(!ac||muted)return; const t=now();
+      voice('sawtooth', 220*semis(rnd(-1,1)), t, 0.22, 0.20, {slideTo:90});
+      noise(t,0.12,0.16, 500, 0.6);
+    },
+    stanceOn(){
+      if(!ac||muted)return; const t=now();
+      voice('triangle', 440, t, 0.12, 0.16, {slideTo:660});  // rising
+    },
+    stanceOff(){
+      if(!ac||muted)return; const t=now();
+      voice('triangle', 560, t, 0.10, 0.13, {slideTo:380});  // falling
+    },
+    wave(){
+      if(!ac||muted)return; const t=now();
+      // little two-note flourish
+      voice('square', 523, t, 0.10, 0.14, {});
+      voice('square', 784, t+0.09, 0.14, 0.14, {});
+    },
+    boss(){
+      if(!ac||muted)return; const t=now();
+      voice('sawtooth', 110, t, 0.6, 0.22, {slideTo:70});
+      voice('square', 165, t+0.05, 0.4, 0.10, {});
+    },
+    win(){
+      if(!ac||muted)return; const t=now();
+      [523,659,784,1047].forEach((f,i)=> voice('square', f, t+i*0.11, 0.22, 0.16, {}));
+    },
+    lose(){
+      if(!ac||muted)return; const t=now();
+      [392,330,262,196].forEach((f,i)=> voice('sawtooth', f, t+i*0.14, 0.3, 0.18, {slideTo:f*0.9}));
+    },
+    ui(){
+      if(!ac||muted)return; const t=now();
+      voice('square', 660*semis(rnd(-1,1)), t, 0.06, 0.12, {});
+    },
+    gem(val){
+      if(!ac||muted)return; const t=now();
+      // brighter/higher chime for more valuable gems
+      const base=520+Math.min(val,12)*40;
+      voice('triangle', base*semis(rnd(-0.5,0.5)), t, 0.10, 0.13, {slideTo:base*1.5});
+    },
+    powerup(){
+      if(!ac||muted)return; const t=now();
+      [523,659,880].forEach((f,i)=> voice('triangle', f, t+i*0.07, 0.2, 0.16, {slideTo:f*1.25}));
+    },
+    rocket(){
+      if(!ac||muted)return; const t=now();
+      voice('sawtooth', 300, t, 0.18, 0.10, {slideTo:600});
+      noise(t,0.12,0.06,1800,0.5);
+    },
+    boom(){
+      if(!ac||muted)return; const t=now();
+      noise(t,0.28,0.30, 220*semis(rnd(-2,2)), 0.6);
+      voice('square', 90, t, 0.22, 0.12, {slideTo:50});
+    },
+    laser(){
+      if(!ac||muted)return; const t=now();
+      // bright charged zap: quick rising sweep + a shimmer
+      voice('sawtooth', 300, t, 0.05, 0.10, {slideTo:1400});
+      voice('square', 1200, t+0.02, 0.18, 0.12, {slideTo:700});
+      noise(t,0.16,0.10, 3000, 0.8);
+    },
+    playMusic(spec){
+      ensure(); if(!ac) return;
+      // resolve spec → a track object + an identity key (so we don't restart the same track)
+      let key, track;
+      if(spec==='menu'){ key='menu'; track=MENU_TRACK; }
+      else if(spec==='boss'){ key='boss'; track=BOSS_TRACK; }
+      else if(spec==='finale'){ key='finale'; track=FINALE_TRACK; }
+      else if(spec && typeof spec==='object' && 'level' in spec){ key='lvl'+spec.level; track=levelTrack(spec.level); }
+      else return;
+      if(musicName===key) return;             // already playing this track
+      musicName=key; musicTrack=track; mStep=0; mNextTime=ac.currentTime+0.05;
+      if(!musicTimer) musicTimer=setInterval(scheduleMusic, 60);
+      scheduleMusic();
+    },
+    stopMusic(){
+      musicName=null; musicTrack=null;
+      if(musicTimer){ clearInterval(musicTimer); musicTimer=null; }
+    }
+  };
+  return api;
+})();
+// unlock/resume audio on first interaction (browsers require a gesture)
+['pointerdown','keydown','touchstart'].forEach(ev=>
+  addEventListener(ev, ()=>{ SFX.resume(); SFX.setMuted(prefMuted); }, {once:false, passive:true}));
+
+let player, bullets, ebullets, enemies, particles, stars;
+let score, wave, waveTimer, spawnQueue, running, frame, shootCd, shake, waveTotal;
+let level, levelIdx, cam, boss, bossActive, phase;
+// gems + roguelite upgrades
+let gems, gemCount, gemGoal, orbs, rockets, bombs, beams, upgrades, paused;
+const GEM_TYPES = [
+  { color:'#ff5d6c', value:1,  w:60 },   // common red
+  { color:'#7dd3ff', value:3,  w:28 },   // blue
+  { color:'#c77dff', value:6,  w:9  },   // purple
+  { color:'#ffc857', value:12, w:3  },   // rare gold
+];
+
+function startLevel(idx){
+  SFX.resume(); SFX.ui();
+  levelIdx=idx; level=LEVELS[idx];
+  player={ x:WORLD/2, y:WORLD*0.62, r:5, hp:100, maxHp:100, sta:160, maxSta:160, defense:false, staLock:false, flash:0 };
+  bullets=[]; ebullets=[]; enemies=[]; particles=[];
+  score=0; wave=0; frame=0; shootCd=0; shake=0;
+  boss=null; bossActive=false; phase='waves';
+  waveTotal=0;
+  gems=[]; gemCount=0; gemGoal=18; paused=false;
+  orbs=[]; rockets=[]; bombs=[]; beams=[];
+  upgrades={ dmgReduce:0, fireRate:0, orb:0, rocket:0, bomb:0, magnet:0, multishot:0, laser:0 };
+  cam={x:player.x-VIEW/2,y:player.y-VIEW/2};
+  makeStars();
+  buildBossProg();
+  running=true;
+  hud.classList.add('on'); stanceBtn.classList.add('show'); bossWrap.classList.remove('on');
+  levelNameEl.textContent=(idx+1)+' · '+level.name;
+  titleScreen.classList.add('hidden'); selectScreen.classList.add('hidden'); overlay.classList.add('hidden'); shopScreen.classList.add('hidden');
+  SFX.playMusic({level: idx});
+  nextWave();
+}
+
+// one segment per wave; fills left→right as waves clear, last one feeds the skull
+function buildBossProg(){
+  segsEl.innerHTML='';
+  for(let i=0;i<level.waves;i++){
+    const seg=document.createElement('div');
+    seg.className='seg'; seg.innerHTML='<i></i>';
+    segsEl.appendChild(seg);
+  }
+  bossProg.classList.add('on'); bossProg.classList.remove('near');
+}
+
+// recompute how close we are to the boss; called each frame during waves
+function updateBossProg(){
+  const segs=segsEl.children;
+  for(let i=0;i<segs.length;i++){
+    const fill=segs[i].querySelector('i');
+    if(wave-1>i){ segs[i].classList.add('done'); fill.style.width='100%'; }      // wave already cleared
+    else if(wave-1===i){                                                          // current wave in progress
+      segs[i].classList.remove('done');
+      const remaining = enemies.length + (spawnQueue?spawnQueue.length:0);
+      const frac = waveTotal>0 ? 1-(remaining/waveTotal) : 0;
+      fill.style.width = Math.max(0,Math.min(1,frac))*100+'%';
+    } else { segs[i].classList.remove('done'); fill.style.width='0%'; }           // future wave
+  }
+  // light up the skull on the final wave
+  if(wave>=level.waves) bossProg.classList.add('near');
+  else bossProg.classList.remove('near');
+}
+
+function makeStars(){
+  stars=[];
+  for(let i=0;i<120;i++) stars.push({ x:Math.random()*WORLD, y:Math.random()*WORLD, z:Math.random()*0.5+0.25, s:Math.random()<0.18?2:1 });
+}
+
+function nextWave(){
+  wave++;
+  if(wave>level.waves){ beginBoss(); return; }
+  waveEl.textContent='WAVE '+wave+'/'+level.waves;
+  const count=level.baseCount+(wave-1)*level.perWave;
+  if(wave>1) SFX.wave();
+  spawnQueue=[];
+  for(let i=0;i<count;i++){
+    spawnQueue.push({ edges: pickEdges(), t:i*34+18 });
+  }
+  waveTotal=count;
+  waveTimer=0;
+}
+
+// choose which polygon spawns. Bias toward the level's headline polygon,
+// but frequently mix in earlier (lower-edge) enemies.
+function pickEdges(){
+  const pool=level.pool;                 // e.g. [3,4,5] on level 3
+  // weight: headline gets the most, older polygons taper off
+  const weights = pool.map(e=>{
+    if(e===level.headline) return 3.0;
+    return 1.0;                          // every earlier polygon equally likely
+  });
+  let tot=weights.reduce((a,b)=>a+b,0), r=Math.random()*tot;
+  for(let i=0;i<pool.length;i++){ if(r<weights[i]) return pool[i]; r-=weights[i]; }
+  return level.headline;
+}
+
+function spawnEnemy(edges){
+  const k=ENEMY_KINDS[edges];
+  const a=Math.random()*6.283, d=VIEW*0.6+Math.random()*60;
+  let x=player.x+Math.cos(a)*d, y=player.y+Math.sin(a)*d;
+  x=Math.max(10,Math.min(WORLD-10,x)); y=Math.max(10,Math.min(WORLD-10,y));
+  const hm=level.hpMul, sm=level.spdMul;
+  enemies.push({
+    x, y, edges,
+    t:'poly',                       // generic tag; behavior comes from kind
+    behavior:k.behavior, fire:k.fire,
+    r:k.r, color:k.color, pts:k.pts,
+    hp:Math.max(1,Math.round(k.hp*hm)), maxHp:Math.max(1,Math.round(k.hp*hm)),
+    spd:k.spd*sm,
+    flash:0, fireCd:50+Math.random()*50,
+    zig:Math.random()*6.283,        // for dart/strafe wobble
+    orbitDir: Math.random()<0.5?1:-1,
+    spin:Math.random()*6.283        // visual rotation
+  });
+}
+
+function beginBoss(){
+  phase='boss'; bossActive=true;
+  const b=level.boss;
+  boss={ x:player.x, y:Math.max(40,player.y-VIEW*0.55), r:b.r, hp:b.hp, maxHp:b.hp, color:b.color,
+    name:b.name, pattern:b.pattern, rate:b.rate, edges:b.edges, fireCd:b.rate, t:0, flash:0,
+    tx:WORLD/2, ty:WORLD*0.35, retarget:0, moons:[] };
+  if(b.pattern==='moons'){
+    const n=b.moons||5;
+    for(let i=0;i<n;i++){
+      boss.moons.push({
+        ang:i/n*6.283,
+        dist:42+ (i%2)*16,        // two orbital rings
+        rate:1+(i%2)*0.4,          // alternating orbital speed
+        r:6, fireCd:30+i*8, flash:0,
+        x:boss.x, y:boss.y
+      });
+    }
+  }
+  bossWrap.classList.add('on'); bossNameEl.textContent=b.name; waveEl.textContent='● BOSS'; bossProg.classList.remove('on'); SFX.boss(); SFX.playMusic(levelIdx===LEVELS.length-1 ? 'finale' : 'boss');
+}
+
+function bossFire(){
+  const b=boss, ang=Math.atan2(player.y-b.y,player.x-b.x);
+  const shoot=(a,sp=2)=>ebullets.push({x:b.x,y:b.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,r:3,boss:true});
+  switch(b.pattern){
+    case 'aimed': shoot(ang,2.2); shoot(ang-0.18,2.2); shoot(ang+0.18,2.2); break;
+    case 'spread': for(let i=-2;i<=2;i++) shoot(ang+i*0.22,2.1); break;
+    case 'ring': for(let i=0;i<12;i++) shoot(i/12*6.283,1.9); break;
+    case 'spiral': shoot(b.t*0.5,2.2); shoot(b.t*0.5+3.14,2.2); break;
+    case 'mix':
+      if(Math.floor(b.t/90)%2===0){ for(let i=-2;i<=2;i++) shoot(ang+i*0.2,2.2); }
+      else { for(let i=0;i<10;i++) shoot(i/10*6.283+b.t*0.05,2); }
+      break;
+    case 'moons':
+      // core itself spits a slow rotating cross; moons fire separately in update
+      for(let i=0;i<4;i++) shoot(b.t*0.04 + i/4*6.283, 1.8);
+      break;
+  }
+}
+
+function dist(a,b,c,d){return Math.hypot(a-c,b-d);}
+function spark(x,y,col,n=6,spd=2){
+  for(let i=0;i<n;i++){const a=Math.random()*6.283,s=Math.random()*spd+.5;
+    particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:14+Math.random()*8,col});}
+}
+
+function update(){
+  frame++;
+  if(shake>0) shake*=0.85;
+
+  let mvx=0,mvy=0;
+  if(keys['a']||keys['arrowleft'])mvx-=1;
+  if(keys['d']||keys['arrowright'])mvx+=1;
+  if(keys['w']||keys['arrowup'])mvy-=1;
+  if(keys['s']||keys['arrowdown'])mvy+=1;
+  const sp=1.8;
+  if(mvx||mvy){const m=Math.hypot(mvx,mvy);player.x+=mvx/m*sp;player.y+=mvy/m*sp;}
+  if(dragActive&&(dragDX||dragDY)){player.x+=dragDX;player.y+=dragDY;dragDX=0;dragDY=0;}
+  player.x=Math.max(player.r,Math.min(WORLD-player.r,player.x));
+  player.y=Math.max(player.r,Math.min(WORLD-player.r,player.y));
+
+  const tcx=player.x-VIEW/2, tcy=player.y-VIEW/2;
+  cam.x+=(tcx-cam.x)*0.15; cam.y+=(tcy-cam.y)*0.15;
+  cam.x=Math.max(0,Math.min(WORLD-VIEW,cam.x));
+  cam.y=Math.max(0,Math.min(WORLD-VIEW,cam.y));
+
+  const def = wantDefense && !player.staLock && player.sta>0;
+  if(def && !player.defense) SFX.stanceOn();
+  else if(!def && player.defense) SFX.stanceOff();
+  player.defense=def;
+  if(def){ player.sta-=0.55; if(player.sta<=0){player.sta=0;player.staLock=true;} }
+  else { player.sta+=0.45; if(player.sta>=player.maxSta)player.sta=player.maxSta;
+         if(player.staLock&&player.sta>player.maxSta*0.3)player.staLock=false; }
+
+  if(shootCd>0)shootCd--;
+  if(!player.defense && shootCd<=0){
+    const BSPD=4.4;
+    // gather all targets with distance
+    const targets=[];
+    for(const e of enemies) targets.push({o:e, d:dist(player.x,player.y,e.x,e.y)});
+    if(bossActive&&boss) targets.push({o:boss, d:dist(player.x,player.y,boss.x,boss.y)});
+    targets.sort((p,q)=>p.d-q.d);
+
+    const wantShots = 1 + upgrades.multishot;       // how many separate enemies to hit
+
+    const fireAt=(tgt,d)=>{
+      const tvx=tgt.vx||0, tvy=tgt.vy||0;
+      let t=d/BSPD;
+      for(let it=0;it<3;it++){ const fx=tgt.x+tvx*t, fy=tgt.y+tvy*t; t=dist(player.x,player.y,fx,fy)/BSPD; }
+      const a=Math.atan2((tgt.y+tvy*t)-player.y,(tgt.x+tvx*t)-player.x);
+      bullets.push({x:player.x,y:player.y,vx:Math.cos(a)*BSPD,vy:Math.sin(a)*BSPD,r:2});
+    };
+
+    if(targets.length===0){
+      bullets.push({x:player.x,y:player.y,vx:0,vy:-BSPD,r:2}); // nothing around → upward
+    } else {
+      const n=Math.min(wantShots, targets.length);
+      for(let i=0;i<n;i++) fireAt(targets[i].o, targets[i].d);
+      // if more shots than distinct enemies, double up on the closest ones
+      for(let i=n;i<wantShots;i++) fireAt(targets[i%targets.length].o, targets[i%targets.length].d);
+    }
+    shootCd=Math.max(3, Math.round(9*Math.pow(0.85,upgrades.fireRate))); SFX.shoot();
+  }
+
+  if(phase==='waves'){
+    waveTimer++;
+    for(let i=spawnQueue.length-1;i>=0;i--){ if(waveTimer>=spawnQueue[i].t){spawnEnemy(spawnQueue[i].edges);spawnQueue.splice(i,1);} }
+    updateBossProg();
+    if(spawnQueue.length===0 && enemies.length===0) nextWave();
+  }
+
+  for(const e of enemies){
+    if(e.flash>0)e.flash--;
+    e.spin += 0.04;
+    const _px=e.x, _py=e.y;                 // remember position to derive velocity
+    const a=Math.atan2(player.y-e.y,player.x-e.x);
+    const pd=dist(player.x,player.y,e.x,e.y);
+
+    // ---- movement behavior ----
+    switch(e.behavior){
+      case 'dart':                                    // triangle: fast erratic zig-zag rush
+        e.zig+=0.18;
+        e.x+=Math.cos(a)*e.spd + Math.cos(e.zig)*1.1;
+        e.y+=Math.sin(a)*e.spd + Math.sin(e.zig*0.7)*0.9;
+        break;
+      case 'march':                                   // square/hex/octant: steady advance
+        e.x+=Math.cos(a)*e.spd;
+        e.y+=Math.sin(a)*e.spd;
+        break;
+      case 'strafe':                                  // pentagon/ennead: approach, then circle-strafe at mid range
+        if(pd>110){ e.x+=Math.cos(a)*e.spd; e.y+=Math.sin(a)*e.spd; }
+        else { const ta=a+e.orbitDir*1.4; e.x+=Math.cos(ta)*e.spd*1.3; e.y+=Math.sin(ta)*e.spd*1.3; }
+        break;
+      case 'orbit':                                   // septron/decabor/circle: hold a ring distance and revolve
+        { const want=90, push=(pd-want)*0.01;
+          const ta=a+e.orbitDir*1.2;
+          e.x+=Math.cos(a)*push*e.spd*6 + Math.cos(ta)*e.spd;
+          e.y+=Math.sin(a)*push*e.spd*6 + Math.sin(ta)*e.spd; }
+        break;
+    }
+    e.vx=e.x-_px; e.vy=e.y-_py;             // smoothed velocity for lead-aim
+
+    // ---- fire behavior ----
+    e.fireCd--;
+    if(e.fire!=='none' && e.fireCd<=0 && pd<VIEW*0.8){
+      const fa=Math.atan2(player.y-e.y,player.x-e.x);
+      const shoot=(ang,sp=1.9)=>ebullets.push({x:e.x,y:e.y,vx:Math.cos(ang)*sp,vy:Math.sin(ang)*sp,r:2.5});
+      switch(e.fire){
+        case 'aimed':  shoot(fa); e.fireCd=120; break;
+        case 'twin':   { const pp=fa+Math.PI/2; for(const s of[-1,1]){ ebullets.push({x:e.x+Math.cos(pp)*5*s,y:e.y+Math.sin(pp)*5*s,vx:Math.cos(fa)*1.9,vy:Math.sin(fa)*1.9,r:2.5}); } e.fireCd=110; break; }
+        case 'spread': for(let i=-2;i<=2;i++) shoot(fa+i*0.2,2.0); e.fireCd=130; break;
+        case 'quad':   for(let i=0;i<4;i++) shoot(e.spin + i*Math.PI/2, 1.8); e.fireCd=90; break;
+        case 'ring':   for(let i=0;i<8;i++) shoot(i/8*6.283, 1.7); e.fireCd=150; break;
+        case 'spiral': shoot(e.spin*3, 2.0); e.fireCd=12; break;
+        case 'lead':   { const la=Math.atan2(player.y-e.y,player.x-e.x); shoot(la,2.6); e.fireCd=100; break; }
+      }
+    }
+
+    // ---- contact ----
+    if(pd<player.r+e.r){
+      if(!player.defense){damage(12);spark(e.x,e.y,e.color,8);} else spark(e.x,e.y,'#3ddc97',8);
+      e.hp-=player.defense?2:3; e.flash=4; if(e.hp<=0)killEnemy(e);
+    }
+  }
+
+  if(bossActive && boss){
+    const b=boss; b.t++; if(b.flash>0)b.flash--;
+    b.retarget--;
+    if(b.retarget<=0){ b.tx=120+Math.random()*(WORLD-240); b.ty=80+Math.random()*(WORLD*0.4); b.retarget=120+Math.random()*120; }
+    { const _bx=b.x, _by=b.y; b.x+=(b.tx-b.x)*0.012; b.y+=(b.ty-b.y)*0.012; b.vx=b.x-_bx; b.vy=b.y-_by; }
+    b.fireCd--;
+    if(b.fireCd<=0){ bossFire(); b.fireCd=b.rate; }
+    // orbiting moons
+    if(b.moons) for(const mn of b.moons){
+      if(mn.flash>0)mn.flash--;
+      mn.ang += 0.02*mn.rate;
+      mn.x = b.x + Math.cos(mn.ang)*mn.dist;
+      mn.y = b.y + Math.sin(mn.ang)*mn.dist;
+      mn.fireCd--;
+      if(mn.fireCd<=0){
+        mn.fireCd=70;
+        const fa=Math.atan2(player.y-mn.y,player.x-mn.x);
+        ebullets.push({x:mn.x,y:mn.y,vx:Math.cos(fa)*2.4,vy:Math.sin(fa)*2.4,r:2.5,boss:true});
+      }
+      // moon body damages on contact
+      if(dist(player.x,player.y,mn.x,mn.y)<player.r+mn.r){ if(!player.defense) damage(0.9); else spark(mn.x,mn.y,'#3ddc97',4); }
+    }
+    if(dist(player.x,player.y,b.x,b.y)<player.r+b.r){ if(!player.defense) damage(0.6); else b.hp-=0.3; }
+    bossFill.style.width=Math.max(0,b.hp)/b.maxHp*100+'%';
+    if(b.hp<=0) winLevel();
+  }
+
+  for(let i=bullets.length-1;i>=0;i--){
+    const b=bullets[i]; b.x+=b.vx; b.y+=b.vy;
+    if(b.x<cam.x-30||b.x>cam.x+VIEW+30||b.y<cam.y-30||b.y>cam.y+VIEW+30){bullets.splice(i,1);continue;}
+    let done=false;
+    for(const e of enemies){ if(dist(b.x,b.y,e.x,e.y)<e.r+b.r){e.hp--;e.flash=4;spark(b.x,b.y,e.color,4);bullets.splice(i,1);SFX.hitEnemy();if(e.hp<=0)killEnemy(e);done=true;break;} }
+    if(done)continue;
+    if(bossActive&&boss){
+      // moons intercept shots aimed at the core
+      if(boss.moons){
+        let mhit=false;
+        for(const mn of boss.moons){ if(dist(b.x,b.y,mn.x,mn.y)<mn.r+b.r){mn.flash=3;spark(b.x,b.y,boss.color,4);bullets.splice(i,1);mhit=true;break;} }
+        if(mhit)continue;
+      }
+      if(dist(b.x,b.y,boss.x,boss.y)<boss.r+b.r){boss.hp-=1;boss.flash=3;spark(b.x,b.y,boss.color,4);bullets.splice(i,1);}
+    }
+  }
+
+  for(let i=ebullets.length-1;i>=0;i--){
+    const b=ebullets[i]; b.x+=b.vx; b.y+=b.vy;
+    if(b.x<cam.x-40||b.x>cam.x+VIEW+40||b.y<cam.y-40||b.y>cam.y+VIEW+40){ebullets.splice(i,1);continue;}
+    if(b.reflected){
+      let hit=false;
+      for(const e of enemies){ if(dist(b.x,b.y,e.x,e.y)<e.r+b.r){e.hp-=2;e.flash=4;spark(b.x,b.y,e.color,4);ebullets.splice(i,1);if(e.hp<=0)killEnemy(e);hit=true;break;} }
+      if(hit)continue;
+      if(bossActive&&boss){
+        if(boss.moons){
+          let mhit=false;
+          for(const mn of boss.moons){ if(dist(b.x,b.y,mn.x,mn.y)<mn.r+b.r){mn.flash=3;spark(b.x,b.y,boss.color,5);ebullets.splice(i,1);mhit=true;break;} }
+          if(mhit)continue;
+        }
+        if(dist(b.x,b.y,boss.x,boss.y)<boss.r+b.r){boss.hp-=2;boss.flash=3;spark(b.x,b.y,boss.color,5);ebullets.splice(i,1);continue;}
+      }
+    }
+    const d=dist(b.x,b.y,player.x,player.y);
+    if(player.defense && d<player.r+9 && !b.reflected){
+      const nx=b.x-player.x,ny=b.y-player.y,nm=Math.hypot(nx,ny)||1,s=Math.hypot(b.vx,b.vy)*1.3;
+      b.vx=nx/nm*s; b.vy=ny/nm*s; b.reflected=true; spark(b.x,b.y,'#3ddc97',5); shake=2; SFX.reflect(); continue;
+    }
+    if(!b.reflected && d<player.r+b.r){ damage(b.boss?12:8); spark(b.x,b.y,'#ff5d6c',6); ebullets.splice(i,1); }
+  }
+
+  // gems: drift, magnet pull, collection
+  const magRange = 28 + upgrades.magnet*22;
+  for(let i=gems.length-1;i>=0;i--){
+    const g=gems[i];
+    g.x+=g.vx; g.y+=g.vy; g.vx*=0.9; g.vy*=0.9; g.bob+=0.12; g.life--;
+    const d=dist(g.x,g.y,player.x,player.y);
+    if(d<magRange){ const a=Math.atan2(player.y-g.y,player.x-g.x); const pull=(1-d/magRange)*1.8+0.4; g.x+=Math.cos(a)*pull; g.y+=Math.sin(a)*pull; }
+    if(d<player.r+5){ collectGem(g); gems.splice(i,1); continue; }
+    if(g.life<=0) gems.splice(i,1);
+  }
+
+  updateWeapons();
+
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.92;p.vy*=.92;p.life--;if(p.life<=0)particles.splice(i,1);}
+  if(player.flash>0)player.flash--;
+
+  hpFill.style.width=Math.max(0,player.hp)/player.maxHp*100+'%';
+  staFill.style.width=player.sta/player.maxSta*100+'%';
+  staFill.style.background=player.staLock?'#7a3a3a':'#3ddc97';
+  if(player.defense){stanceTag.textContent='▣ DEFENSE';stanceTag.style.color='var(--def)';}
+  else{stanceTag.textContent='◆ OFFENSE';stanceTag.style.color=player.staLock?'var(--dim)':'var(--off)';}
+  scoreEl.textContent=score;
+  gemNumEl.textContent=gemCount; gemGoalEl.textContent='/'+gemGoal;
+}
+
+function damage(n){
+  const red=[0,0.15,0.28,0.40,0.50][upgrades?upgrades.dmgReduce:0]||0;
+  n=n*(1-red);
+  player.hp-=n; if(n>=1){player.flash=6;shake=4;SFX.hurt();} if(player.hp<=0){player.hp=0;loseLevel();}
+}
+function killEnemy(e){ const i=enemies.indexOf(e); if(i>=0)enemies.splice(i,1); score+=e.pts; spark(e.x,e.y,e.color,12,3); shake=Math.max(shake,2); SFX.kill(); dropGems(e); }
+
+// drop one or more gems; tougher enemies bias toward rarer/more valuable ones
+function dropGems(e){
+  // higher-edge polygons are tougher → drop more, rarer gems
+  const edges = e.edges===0?12:e.edges;   // circle counts as max
+  let n = 1 + Math.floor((edges-3)/3);    // 3-5→1, 6-8→2, 9-11→3, circle→4
+  let bias = Math.floor((edges-3)/2);     // climbs with edge count
+  for(let k=0;k<n;k++){
+    const gt=pickGemType(bias);
+    const a=Math.random()*6.283, s=Math.random()*0.8+0.3;
+    gems.push({ x:e.x, y:e.y, vx:Math.cos(a)*s, vy:Math.sin(a)*s, type:gt, life:600, bob:Math.random()*6.283 });
+  }
+}
+function pickGemType(bias){
+  // bias shifts weight toward rarer gems
+  const weights = GEM_TYPES.map((g,idx)=> g.w * (idx>=1?1+bias*0.6:1) / (idx===0?1+bias*0.5:1));
+  let tot=weights.reduce((a,b)=>a+b,0), r=Math.random()*tot;
+  for(let i=0;i<GEM_TYPES.length;i++){ if(r<weights[i]) return GEM_TYPES[i]; r-=weights[i]; }
+  return GEM_TYPES[0];
+}
+function collectGem(g){
+  gemCount += g.type.value;
+  SFX.gem(g.type.value);
+  spark(g.x,g.y,g.type.color,4,1.5);
+  if(gemCount>=gemGoal && !paused) openShop();
+}
+
+// ---------- roguelite upgrades ----------
+const UPGRADES = [
+  { key:'dmgReduce', max:4, icon:'🛡', name:'PLATING',
+    desc:k=>`Take ${[0,15,28,40,50][k+1]}% less damage`,
+    color:'#7dd3ff' },
+  { key:'fireRate', max:5, icon:'⚡', name:'OVERCLOCK',
+    desc:k=>`Fire ${Math.round((1-Math.pow(0.85,k+1))*100)}% faster`,
+    color:'#ffc857' },
+  { key:'multishot', max:4, icon:'⋔', name:'SPLIT FIRE',
+    desc:k=> k===0?'Fire at a 2nd enemy at once':`Target ${k+2} enemies at once`,
+    color:'#ffe9a8' },
+  { key:'orb', max:4, icon:'◍', name:'ORBITER',
+    desc:k=> k===0?'A heavy orb circles you, shredding & shoving foes':`+1 orbiting orb (now ${k+1})`,
+    color:'#3ddc97' },
+  { key:'rocket', max:4, icon:'➹', name:'ROCKETS',
+    desc:k=> k===0?'Launch homing rockets with splash blasts':`More & faster rockets (lvl ${k+1})`,
+    color:'#ff5d6c' },
+  { key:'bomb', max:3, icon:'✸', name:'CLUSTER BOMBS',
+    desc:k=> k===0?'Drop timed bombs that blast nearby enemies':`Bigger, more frequent bombs (lvl ${k+1})`,
+    color:'#c77dff' },
+  { key:'laser', max:4, icon:'✦', name:'LANCE',
+    desc:k=> k===0?'Charge a piercing beam that spears everything in line':`Stronger, faster laser (lvl ${k+1})`,
+    color:'#ff3df0' },
+  { key:'magnet', max:3, icon:'⟴', name:'MAGNET',
+    desc:k=>`Larger gem pickup range (lvl ${k+1})`,
+    color:'#9af5cf' },
+];
+
+function rollShopChoices(){
+  const avail = UPGRADES.filter(u=> upgrades[u.key] < u.max);
+  // shuffle
+  for(let i=avail.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [avail[i],avail[j]]=[avail[j],avail[i]]; }
+  return avail.slice(0,3);
+}
+
+function openShop(){
+  paused=true; running=false;
+  SFX.powerup();
+  const choices = rollShopChoices();
+  const cards = choices.map((u,idx)=>{
+    const cur=upgrades[u.key];
+    return `<button class="card" data-key="${u.key}">
+      <div class="cicon" style="color:${u.color}">${u.icon}</div>
+      <div class="cname">${u.name}${cur>0?` <span class="lvl">Lv ${cur}→${cur+1}</span>`:''}</div>
+      <div class="cdesc">${u.desc(cur)}</div>
+    </button>`;
+  }).join('');
+  shopScreen.innerHTML = `
+    <div class="shopHead">
+      <div class="shopTitle">UPGRADE</div>
+      <div class="shopSub">spent ${gemCount} gems · choose one</div>
+    </div>
+    <div class="cards">${cards}</div>`;
+  shopScreen.classList.remove('hidden');
+  shopScreen.querySelectorAll('.card').forEach(c=>{
+    c.onclick=()=>pickUpgrade(c.dataset.key);
+  });
+}
+
+function pickUpgrade(key){
+  upgrades[key]++;
+  SFX.powerup();
+  // spend gems, raise next goal
+  gemCount=0;
+  gemGoal=Math.round(gemGoal*1.6)+6;
+  // instantiate orbs immediately so the count matches
+  syncOrbs();
+  shopScreen.classList.add('hidden');
+  paused=false; running=true;
+}
+
+// keep the orbiting orbs array sized to the upgrade level
+function syncOrbs(){
+  const want=upgrades.orb;
+  orbs=[];
+  for(let i=0;i<want;i++) orbs.push({ ang:i/want*6.283 });
+}
+
+// apply damage to whatever enemy/boss/moon is at (x,y) within radius; returns true if something was hit
+function areaHit(x,y,radius,dmg){
+  let hitAny=false;
+  for(let i=enemies.length-1;i>=0;i--){
+    const e=enemies[i];
+    if(dist(x,y,e.x,e.y)<radius+e.r){ e.hp-=dmg; e.flash=4; hitAny=true; if(e.hp<=0)killEnemy(e); }
+  }
+  if(bossActive&&boss){
+    if(boss.moons) for(const mn of boss.moons){ if(dist(x,y,mn.x,mn.y)<radius+mn.r){ mn.flash=3; hitAny=true; } }
+    if(dist(x,y,boss.x,boss.y)<radius+boss.r){ boss.hp-=dmg; boss.flash=3; hitAny=true; }
+  }
+  return hitAny;
+}
+function nearestTarget(x,y){
+  let best=null, bd=1e9;
+  for(const e of enemies){ const d=dist(x,y,e.x,e.y); if(d<bd){bd=d;best=e;} }
+  if(bossActive&&boss){ const d=dist(x,y,boss.x,boss.y); if(d<bd){bd=d;best=boss;} }
+  return best;
+}
+
+function updateWeapons(){
+  // --- orbiting orbs: wider orbit, real damage, knockback so they clear space ---
+  if(upgrades.orb>0){
+    if(orbs.length!==upgrades.orb) syncOrbs();
+    const R=34 + upgrades.orb*3;          // orbit further out so orbs intercept approachers
+    const dmg=1.6;                         // ~per contact frame; with a hit radius this is strong
+    const hitR=8;
+    for(const o of orbs){
+      o.ang+=0.085;
+      o.x=player.x+Math.cos(o.ang)*R;
+      o.y=player.y+Math.sin(o.ang)*R;
+      // damage + shove enemies the orb sweeps through
+      for(const e of enemies){
+        if(dist(o.x,o.y,e.x,e.y)<hitR+e.r){
+          e.hp-=dmg; e.flash=2;
+          const a=Math.atan2(e.y-o.y,e.x-o.x); e.x+=Math.cos(a)*1.6; e.y+=Math.sin(a)*1.6;
+          if(e.hp<=0)killEnemy(e);
+        }
+      }
+      if(bossActive&&boss){
+        if(dist(o.x,o.y,boss.x,boss.y)<hitR+boss.r){ boss.hp-=dmg*0.5; boss.flash=2; }
+        if(boss.moons) for(const mn of boss.moons){ if(dist(o.x,o.y,mn.x,mn.y)<hitR+mn.r){ mn.flash=2; } }
+      }
+    }
+  }
+  // --- homing rockets: faster, sharper turn, bigger splash, more damage ---
+  if(upgrades.rocket>0){
+    if(player.rocketCd===undefined) player.rocketCd=0;
+    player.rocketCd--;
+    const interval=Math.max(24, 90-upgrades.rocket*16);   // fires noticeably more often
+    if(player.rocketCd<=0){
+      const tgt=nearestTarget(player.x,player.y);
+      if(tgt){
+        player.rocketCd=interval;
+        // launch 1 rocket, +1 every two upgrade levels, fanned out
+        const volley=1+Math.floor(upgrades.rocket/2);
+        for(let v=0;v<volley;v++){
+          const spread=(v-(volley-1)/2)*0.4;
+          const a=Math.atan2(tgt.y-player.y,tgt.x-player.x)+spread;
+          rockets.push({x:player.x,y:player.y,vx:Math.cos(a)*3.4,vy:Math.sin(a)*3.4,life:200});
+        }
+        SFX.rocket();
+      } else { player.rocketCd=20; }
+    }
+    const blast=20+upgrades.rocket*3, rdmg=6+upgrades.rocket*2;
+    for(let i=rockets.length-1;i>=0;i--){
+      const r=rockets[i]; r.life--;
+      const tgt=nearestTarget(r.x,r.y);
+      if(tgt){ const a=Math.atan2(tgt.y-r.y,tgt.x-r.x), ca=Math.atan2(r.vy,r.vx);
+        let na=ca+Math.max(-0.26,Math.min(0.26, ((a-ca+9.42)%6.283)-3.14)); // sharper homing
+        const sp=4.0; r.vx=Math.cos(na)*sp; r.vy=Math.sin(na)*sp; }
+      r.x+=r.vx; r.y+=r.vy;
+      if(r.life<=0||r.x<0||r.x>WORLD||r.y<0||r.y>WORLD){ rockets.splice(i,1); continue; }
+      // detonate on proximity to anything, with area splash
+      const near = nearestTarget(r.x,r.y);
+      const hit = near && dist(r.x,r.y,near.x,near.y) < near.r+6;
+      if(hit){
+        areaHit(r.x,r.y,blast,rdmg);
+        spark(r.x,r.y,'#ffae6b',16,3.5); shake=Math.max(shake,4); SFX.boom();
+        rockets.splice(i,1);
+      }
+    }
+  }
+  // --- timed cluster bombs ---
+  if(upgrades.bomb>0){
+    if(player.bombCd===undefined) player.bombCd=90;
+    player.bombCd--;
+    const interval=Math.max(70, 160-upgrades.bomb*25);
+    if(player.bombCd<=0){
+      player.bombCd=interval;
+      bombs.push({x:player.x,y:player.y,fuse:50,r:18+upgrades.bomb*6});
+    }
+    for(let i=bombs.length-1;i>=0;i--){
+      const b=bombs[i]; b.fuse--;
+      if(b.fuse<=0){
+        areaHit(b.x,b.y,b.r,5+upgrades.bomb);
+        spark(b.x,b.y,'#c77dff',22,4); shake=Math.max(shake,5); SFX.boom();
+        bombs.splice(i,1);
+      }
+    }
+  }
+  // --- piercing laser (LANCE) ---
+  if(upgrades.laser>0){
+    if(player.laserCd===undefined) player.laserCd=120;
+    player.laserCd--;
+    const interval=Math.max(110, 300-upgrades.laser*45);   // fires every few seconds, faster with levels
+    if(player.laserCd<=0){
+      const tgt=nearestTarget(player.x,player.y);
+      if(tgt){
+        player.laserCd=interval;
+        fireLaser(Math.atan2(tgt.y-player.y,tgt.x-player.x));
+      } else { player.laserCd=30; }
+    }
+  }
+  // fade out active beams
+  for(let i=beams.length-1;i>=0;i--){ beams[i].life--; if(beams[i].life<=0) beams.splice(i,1); }
+}
+
+// fire a beam from the player along angle `ang`; hits everything in its path (pierces)
+function fireLaser(ang){
+  const dx=Math.cos(ang), dy=Math.sin(ang);
+  const len=900, half=7+upgrades.laser*1.5, dmg=10+upgrades.laser*6;
+  const ox=player.x, oy=player.y;
+  // perpendicular distance to the forward ray; only count points ahead of the player
+  const onBeam=(tx,ty,rad)=>{
+    const rx=tx-ox, ry=ty-oy;
+    const proj=rx*dx+ry*dy;                 // distance along beam
+    if(proj<-rad || proj>len) return false;
+    const perp=Math.abs(rx*dy - ry*dx);     // perpendicular distance
+    return perp < half+rad;
+  };
+  for(let i=enemies.length-1;i>=0;i--){
+    const e=enemies[i];
+    if(onBeam(e.x,e.y,e.r)){ e.hp-=dmg; e.flash=4; spark(e.x,e.y,'#ff3df0',6,2); if(e.hp<=0)killEnemy(e); }
+  }
+  if(bossActive&&boss){
+    if(onBeam(boss.x,boss.y,boss.r)){ boss.hp-=dmg*0.6; boss.flash=4; }
+    if(boss.moons) for(const mn of boss.moons){ if(onBeam(mn.x,mn.y,mn.r)) mn.flash=4; }
+  }
+  beams.push({ x:ox, y:oy, ang, len, half, life:14 });   // visual flash
+  shake=Math.max(shake,4); SFX.laser();
+}
+
+// ---- pixel-art primitives (no antialiasing: integer-snapped cells) ----
+function pxDisc(cx,cy,r,col){
+  cx=Math.round(cx); cy=Math.round(cy); r=Math.round(r);
+  ctx.fillStyle=col;
+  for(let dy=-r;dy<=r;dy++){
+    const dx=Math.floor(Math.sqrt(r*r-dy*dy));
+    ctx.fillRect(cx-dx, cy+dy, dx*2+1, 1);
+  }
+}
+function pxRing(cx,cy,r,col){
+  cx=Math.round(cx); cy=Math.round(cy); r=Math.round(r);
+  ctx.fillStyle=col;
+  let x=r, y=0, err=1-r;
+  const plot=(a,b)=>ctx.fillRect(a,b,1,1);
+  while(x>=y){
+    plot(cx+x,cy+y); plot(cx+y,cy+x); plot(cx-y,cy+x); plot(cx-x,cy+y);
+    plot(cx-x,cy-y); plot(cx-y,cy-x); plot(cx+y,cy-x); plot(cx+x,cy-y);
+    y++; if(err<0) err+=2*y+1; else { x--; err+=2*(y-x)+1; }
+  }
+}
+function pxArc(cx,cy,r,a0,a1,col){
+  cx=Math.round(cx); cy=Math.round(cy); r=Math.round(r);
+  ctx.fillStyle=col;
+  const norm=t=>{ while(t<-Math.PI)t+=6.2832; while(t>Math.PI)t-=6.2832; return t; };
+  const mid=Math.atan2(Math.sin((a0+a1)/2),Math.cos((a0+a1)/2));
+  const half=Math.abs(norm(a1-a0))/2;
+  let x=r,y=0,err=1-r; const cells=[];
+  const push=(a,b)=>cells.push([a,b]);
+  while(x>=y){
+    push(cx+x,cy+y); push(cx+y,cy+x); push(cx-y,cy+x); push(cx-x,cy+y);
+    push(cx-x,cy-y); push(cx-y,cy-x); push(cx+y,cy-x); push(cx+x,cy-y);
+    y++; if(err<0) err+=2*y+1; else { x--; err+=2*(y-x)+1; }
+  }
+  for(const [a,b] of cells){
+    const ang=Math.atan2(b-cy,a-cx);
+    if(Math.abs(norm(ang-mid))<=half) ctx.fillRect(a,b,1,1);
+  }
+}
+
+// filled regular polygon (pixel scanline fill) + 1px bg-colored inset for a crisp edge
+function pxPolygon(cx,cy,r,n,rot,col,hollow){
+  cx=Math.round(cx); cy=Math.round(cy); r=Math.round(r);
+  const verts=[];
+  for(let i=0;i<n;i++){ const a=rot - Math.PI/2 + i/n*6.2832; verts.push([cx+Math.cos(a)*r, cy+Math.sin(a)*r]); }
+  scanFill(verts,col);
+  if(hollow && r>=5){
+    // inner bg polygon to leave a ring outline, then a small center dot
+    const inner=[];
+    const ir=r-2;
+    for(let i=0;i<n;i++){ const a=rot - Math.PI/2 + i/n*6.2832; inner.push([cx+Math.cos(a)*ir, cy+Math.sin(a)*ir]); }
+    scanFill(inner, level.bg);
+    ctx.fillStyle=col; ctx.fillRect(cx-1,cy-1,2,2);
+  }
+}
+function scanFill(verts,col){
+  ctx.fillStyle=col;
+  let minY=Infinity,maxY=-Infinity;
+  for(const v of verts){ minY=Math.min(minY,v[1]); maxY=Math.max(maxY,v[1]); }
+  minY=Math.floor(minY); maxY=Math.ceil(maxY);
+  for(let y=minY;y<=maxY;y++){
+    const xs=[];
+    for(let i=0;i<verts.length;i++){
+      const a=verts[i], b=verts[(i+1)%verts.length];
+      const ay=a[1],by=b[1];
+      if((ay<=y&&by>y)||(by<=y&&ay>y)){
+        const t=(y-ay)/(by-ay); xs.push(a[0]+t*(b[0]-a[0]));
+      }
+    }
+    xs.sort((p,q)=>p-q);
+    for(let i=0;i+1<xs.length;i+=2){
+      const x0=Math.round(xs[i]), x1=Math.round(xs[i+1]);
+      if(x1>=x0) ctx.fillRect(x0,y,x1-x0+1,1);
+    }
+  }
+}
+
+function draw(){
+  ctx.clearRect(0,0,VIEW,VIEW);
+  ctx.fillStyle=level.bg; ctx.fillRect(0,0,VIEW,VIEW);
+
+  const ox=shake?(Math.random()-.5)*shake:0, oy=shake?(Math.random()-.5)*shake:0;
+  const camx=cam.x+ox, camy=cam.y+oy;
+
+  for(const s of stars){
+    const sx=s.x - camx*s.z, sy=s.y - camy*s.z;
+    if(sx>-4&&sx<VIEW+4&&sy>-4&&sy<VIEW+4){ ctx.fillStyle=level.star; ctx.fillRect(Math.round(sx),Math.round(sy),s.s,s.s); }
+  }
+
+  ctx.strokeStyle=level.star; ctx.globalAlpha=.5; ctx.lineWidth=1;
+  const g=40, startX=-(camx%g), startY=-(camy%g);
+  for(let x=startX;x<=VIEW;x+=g){ctx.beginPath();ctx.moveTo(Math.round(x)+.5,0);ctx.lineTo(Math.round(x)+.5,VIEW);ctx.stroke();}
+  for(let y=startY;y<=VIEW;y+=g){ctx.beginPath();ctx.moveTo(0,Math.round(y)+.5);ctx.lineTo(VIEW,Math.round(y)+.5);ctx.stroke();}
+  ctx.globalAlpha=1;
+
+  ctx.strokeStyle=level.accent; ctx.globalAlpha=.35; ctx.lineWidth=2;
+  ctx.strokeRect(Math.round(-camx)+.5, Math.round(-camy)+.5, WORLD, WORLD);
+  ctx.globalAlpha=1;
+
+  const sx=v=>v-camx, sy=v=>v-camy;
+
+  for(const p of particles){ctx.globalAlpha=Math.min(1,p.life/12);ctx.fillStyle=p.col;ctx.fillRect(Math.round(sx(p.x)),Math.round(sy(p.y)),2,2);}
+  ctx.globalAlpha=1;
+
+  // gems (pixel diamonds, gentle bob + blink when about to expire)
+  for(const g of gems){
+    const gx=Math.round(sx(g.x)), gy=Math.round(sy(g.y)+Math.sin(g.bob)*1.5);
+    if(gx<-8||gx>VIEW+8||gy<-8||gy>VIEW+8)continue;
+    if(g.life<90 && Math.floor(g.life/6)%2===0) continue; // blink before vanishing
+    ctx.fillStyle=g.type.color;
+    // small diamond
+    ctx.fillRect(gx-1,gy-3,2,6); ctx.fillRect(gx-2,gy-2,4,4); ctx.fillRect(gx-3,gy-1,6,2);
+    ctx.fillStyle='#ffffff'; ctx.fillRect(gx-1,gy-2,1,1); // glint
+  }
+
+  // bombs (pulsing, flash faster as fuse runs out)
+  for(const b of bombs){
+    const bx=Math.round(sx(b.x)),by=Math.round(sy(b.y));
+    const blink=Math.floor(b.fuse/Math.max(3,b.fuse/4))%2===0;
+    pxDisc(bx,by,4, blink?'#fff':'#c77dff');
+    pxRing(bx,by,6,'#c77dff');
+  }
+
+  for(const e of enemies){
+    const ex=Math.round(sx(e.x)),ey=Math.round(sy(e.y));
+    if(ex<-20||ex>VIEW+20||ey<-20||ey>VIEW+20)continue;
+    const col=e.flash>0?'#fff':e.color;
+    if(e.edges===0){
+      // circle enemy (level 10): filled disc with a hollow core ring
+      pxDisc(ex,ey,e.r,col);
+      pxDisc(ex,ey,Math.max(1,e.r-3),level.bg);
+      pxDisc(ex,ey,2,col);
+    } else {
+      pxPolygon(ex,ey,e.r,e.edges,e.spin,col,true);
+    }
+    // damage pip for tougher (6+ edge) enemies
+    if(e.edges>=6 || e.edges===0){
+      const w=e.r*2;
+      ctx.fillStyle=level.bg; ctx.fillRect(ex-e.r,ey-e.r-4,w,2);
+      ctx.fillStyle='#3ddc97'; ctx.fillRect(ex-e.r,ey-e.r-4,Math.round(w*e.hp/e.maxHp),2);
+    }
+  }
+
+  if(bossActive&&boss){
+    const bx=Math.round(sx(boss.x)),by=Math.round(sy(boss.y)),s=boss.r;
+    if(boss.moons.length>0){
+      // faint orbit rings → solid pixel rings in a darker shade of the boss color
+      for(const rd of [...new Set(boss.moons.map(m=>m.dist))]) pxRing(bx,by,rd,level.star);
+      // circular core: outer disc, bg hollow, pulsing core disc
+      pxDisc(bx,by,s, boss.flash>0?'#fff':boss.color);
+      pxDisc(bx,by,s-4, level.bg);
+      const pr=3+Math.round(Math.abs(Math.sin(boss.t*0.12))*4);
+      pxDisc(bx,by,pr, boss.color);
+      // moons
+      for(const mn of boss.moons){
+        const mx=Math.round(sx(mn.x)),my=Math.round(sy(mn.y));
+        pxDisc(mx,my,mn.r, mn.flash>0?'#fff':boss.color);
+        pxDisc(mx-1,my-1,1, level.bg);
+      }
+    } else {
+      // boss built from the level's polygon, slowly rotating, pulsing core
+      const col=boss.flash>0?'#fff':boss.color;
+      pxPolygon(bx,by,s, boss.edges, boss.t*0.012, col, false);
+      // hollow inner + pulsing center
+      pxPolygon(bx,by,s-4, boss.edges, boss.t*0.012, level.bg, false);
+      const pr=3+Math.round(Math.abs(Math.sin(boss.t*0.12))*4);
+      pxDisc(bx,by,pr, boss.color);
+    }
+  }
+
+  ctx.fillStyle='#ffe9a8';
+  for(const b of bullets) ctx.fillRect(Math.round(sx(b.x))-1,Math.round(sy(b.y))-2,2,4);
+
+  for(const b of ebullets){ ctx.fillStyle=b.reflected?'#3ddc97':(b.boss?'#ffae6b':'#ff8d99'); const r=b.r>=3?3:2; ctx.fillRect(Math.round(sx(b.x))-1,Math.round(sy(b.y))-1,r,r); }
+
+  const px=Math.round(sx(player.x)),py=Math.round(sy(player.y));
+  const pcol=player.flash>0?'#fff':(player.defense?'#3ddc97':'#ff5d6c');
+  ctx.fillStyle=pcol; ctx.fillRect(px-4,py-4,8,8);
+  ctx.fillStyle=level.bg; ctx.fillRect(px-2,py-2,4,4);
+  ctx.fillStyle=pcol; ctx.fillRect(px-1,py-1,2,2);
+  if(player.defense){
+    // pixel-art shield: solid ring, blinks brighter on a beat (no alpha blending)
+    pxRing(px,py,11,'#3ddc97');
+    if(Math.floor(frame/6)%2===0) pxRing(px,py,10,'#9af5cf');
+  } else { ctx.fillStyle='#ffc857'; ctx.fillRect(px-5,py-1,1,2); ctx.fillRect(px+4,py-1,1,2); }
+
+  // orbiting orbs (bigger, with a faint trail ring)
+  if(orbs) for(const o of orbs){
+    if(o.x===undefined)continue;
+    const oxp=Math.round(sx(o.x)),oyp=Math.round(sy(o.y));
+    pxDisc(oxp,oyp,5,'#3ddc97');
+    pxDisc(oxp,oyp,3,'#9af5cf');
+    pxDisc(oxp,oyp,1,'#ffffff');
+  }
+  // rockets (with a flame trail)
+  for(const r of rockets){
+    const rx=Math.round(sx(r.x)),ry=Math.round(sy(r.y));
+    ctx.fillStyle='#ff5d6c'; ctx.fillRect(Math.round(sx(r.x-r.vx*1.5))-1,Math.round(sy(r.y-r.vy*1.5))-1,2,2);
+    ctx.fillStyle='#ffc857'; ctx.fillRect(Math.round(sx(r.x-r.vx))-1,Math.round(sy(r.y-r.vy))-1,2,2);
+    ctx.fillStyle='#ffe9a8'; ctx.fillRect(rx-2,ry-2,4,4);
+    ctx.fillStyle='#fff'; ctx.fillRect(rx-1,ry-1,2,2);
+  }
+  // laser beams (bright pierce line, fades over its short life)
+  for(const bm of beams){
+    const dx=Math.cos(bm.ang), dy=Math.sin(bm.ang);
+    const x0=sx(bm.x), y0=sy(bm.y);
+    const fade=bm.life/14;
+    const w=Math.max(1, Math.round(bm.half*fade));
+    const stepLen=Math.max(2, w);                   // step ~ beam width to limit overdraw
+    const steps=Math.ceil(bm.len/stepLen);
+    for(let pass=0;pass<2;pass++){
+      ctx.fillStyle = pass===0 ? '#ff3df0' : '#ffffff';
+      const ww = pass===0 ? w : Math.max(1,Math.round(w*0.4));
+      for(let s=0;s<steps;s++){
+        const px=Math.round(x0+dx*s*stepLen), py=Math.round(y0+dy*s*stepLen);
+        if(px<-10||px>VIEW+10||py<-10||py>VIEW+10) continue;
+        ctx.fillRect(px-ww, py-ww, ww*2+1, ww*2+1);
+      }
+    }
+  }
+
+  drawPointers();
+}
+
+function drawPointers(){
+  const cx=VIEW/2,cy=VIEW/2;
+  const mark=(wx,wy,col,big)=>{
+    const dx=wx-(cam.x+VIEW/2), dy=wy-(cam.y+VIEW/2);
+    if(Math.abs(dx)<VIEW/2-8 && Math.abs(dy)<VIEW/2-8) return;
+    const a=Math.atan2(dy,dx), m=VIEW/2-8;
+    const ix=cx+Math.cos(a)*m, iy=cy+Math.sin(a)*m;
+    // pixel arc hugging the edge, bulging toward the threat
+    const span=big?0.9:0.65, rad=big?7:5;
+    pxArc(ix, iy, rad, a-span, a+span, col);
+    if(big) pxArc(ix, iy, rad-1, a-span, a+span, col); // thicker for boss
+  };
+  if(bossActive&&boss) mark(boss.x,boss.y,boss.color,true);
+  else for(const e of enemies) mark(e.x,e.y,e.color,false);
+}
+
+function winLevel(){
+  running=false; bossActive=false; phase='won';
+  cleared.add(levelIdx); SFX.win(); SFX.playMusic('menu');
+  if(levelIdx+1<LEVELS.length) unlocked=Math.max(unlocked, levelIdx+2);
+  if(score>bestScore) bestScore=score;
+  saveProgress();
+  hud.classList.remove('on'); stanceBtn.classList.remove('show'); bossWrap.classList.remove('on');
+  const last=levelIdx===LEVELS.length-1, next=levelIdx+1;
+  overlay.innerHTML=`
+    <h1 style="font-size:clamp(40px,11vw,80px);color:var(--def)">SECTOR<br>CLEAR</h1>
+    <div class="gostat">${level.name} · score <b>${score}</b></div>
+    <div class="gostat" style="font-size:clamp(15px,3.4vw,20px);color:var(--dim)">best <b>${bestScore}</b></div>
+    <div class="help">${ last
+      ? 'You held both stances to the end of the line. There is nothing left to clear.'
+      : 'A new sector is unlocked.' }</div>
+    <div class="btnRow">
+      ${ last ? '' : `<button id="nextBtn">NEXT SECTOR</button>` }
+      <button class="ghost" id="mapBtn">SECTOR MAP</button>
+    </div>`;
+  overlay.classList.remove('hidden');
+  if(!last) document.getElementById('nextBtn').onclick=()=>startLevel(next);
+  document.getElementById('mapBtn').onclick=openSelect;
+}
+
+function loseLevel(){
+  running=false; bossActive=false; SFX.lose(); SFX.playMusic('menu');
+  if(score>bestScore){ bestScore=score; saveProgress(); }
+  hud.classList.remove('on'); stanceBtn.classList.remove('show'); bossWrap.classList.remove('on');
+  const where = phase==='boss' ? `against <b>${level.boss.name}</b>` : `on wave <b>${wave}</b>`;
+  overlay.innerHTML=`
+    <h1 style="font-size:clamp(40px,11vw,80px)">DOWN</h1>
+    <div class="gostat">fell ${where}</div>
+    <div class="gostat">score <b>${score}</b> · best <b>${bestScore}</b></div>
+    <div class="help">The shield was right there. It always is.</div>
+    <div class="btnRow">
+      <button id="retryBtn">RETRY</button>
+      <button class="ghost" id="mapBtn">SECTOR MAP</button>
+    </div>`;
+  overlay.classList.remove('hidden');
+  document.getElementById('retryBtn').onclick=()=>startLevel(levelIdx);
+  document.getElementById('mapBtn').onclick=openSelect;
+}
+
+function openSelect(){
+  running=false; paused=false;
+  SFX.playMusic('menu');
+  hud.classList.remove('on'); stanceBtn.classList.remove('show'); bossWrap.classList.remove('on');
+  titleScreen.classList.add('hidden'); overlay.classList.add('hidden'); shopScreen.classList.add('hidden');
+  buildLevelList();
+  selectScreen.classList.remove('hidden');
+}
+
+// build a pixel-style difficulty face for level index i (0..9): green grin → red dread
+function difficultyFace(i){
+  const t=i/(LEVELS.length-1);                      // 0..1
+  // color ramp green→yellow→orange→red
+  const ramp=['#3ddc97','#7ddc4f','#b9dc3d','#ffd23d','#ffb02e','#ff8a2e','#ff6a3d','#ff4d4d','#ff2e6e','#ff1f4f'];
+  const col=ramp[i]||ramp[ramp.length-1];
+  // eyes & mouth per difficulty tier (px coords on a 16x16 grid)
+  // tiers: 0-1 happy, 2-3 calm, 4-5 worried, 6-7 grimace, 8 shocked, 9 dread
+  let eyes, mouth, brow='';
+  if(i<=1){            // smile
+    eyes=`<rect x="4" y="6" width="2" height="2"/><rect x="10" y="6" width="2" height="2"/>`;
+    mouth=`<rect x="4" y="10" width="2" height="2"/><rect x="6" y="11" width="4" height="1"/><rect x="10" y="10" width="2" height="2"/>`;
+  } else if(i<=3){     // neutral
+    eyes=`<rect x="4" y="6" width="2" height="2"/><rect x="10" y="6" width="2" height="2"/>`;
+    mouth=`<rect x="5" y="11" width="6" height="1"/>`;
+  } else if(i<=5){     // worried (slight frown, raised inner brows)
+    brow=`<rect x="4" y="4" width="3" height="1"/><rect x="9" y="4" width="3" height="1"/>`;
+    eyes=`<rect x="4" y="6" width="2" height="2"/><rect x="10" y="6" width="2" height="2"/>`;
+    mouth=`<rect x="6" y="11" width="4" height="1"/><rect x="5" y="10" width="1" height="1"/><rect x="10" y="10" width="1" height="1"/>`;
+  } else if(i<=7){     // grimace (angled brows, gritted mouth)
+    brow=`<rect x="4" y="4" width="3" height="1"/><rect x="5" y="5" width="2" height="1"/><rect x="9" y="4" width="3" height="1"/><rect x="9" y="5" width="2" height="1"/>`;
+    eyes=`<rect x="5" y="6" width="2" height="2"/><rect x="9" y="6" width="2" height="2"/>`;
+    mouth=`<rect x="5" y="10" width="6" height="2"/><rect x="6" y="11" width="1" height="1" fill="${'#000'}"/><rect x="9" y="11" width="1" height="1" fill="#000"/>`;
+  } else if(i===8){    // shocked (wide eyes, open O mouth)
+    brow=`<rect x="4" y="3" width="3" height="1"/><rect x="9" y="3" width="3" height="1"/>`;
+    eyes=`<rect x="4" y="5" width="3" height="3"/><rect x="9" y="5" width="3" height="3"/><rect x="5" y="6" width="1" height="1" fill="#000"/><rect x="10" y="6" width="1" height="1" fill="#000"/>`;
+    mouth=`<rect x="6" y="10" width="4" height="3"/><rect x="7" y="11" width="2" height="1" fill="#000"/>`;
+  } else {             // dread (X eyes, wavy mouth)
+    eyes=`<rect x="4" y="5" width="1" height="1"/><rect x="5" y="6" width="1" height="1"/><rect x="6" y="7" width="1" height="1"/><rect x="6" y="5" width="1" height="1"/><rect x="4" y="7" width="1" height="1"/>
+           <rect x="10" y="5" width="1" height="1"/><rect x="11" y="6" width="1" height="1"/><rect x="12" y="7" width="1" height="1"/><rect x="12" y="5" width="1" height="1"/><rect x="10" y="7" width="1" height="1"/>`;
+    mouth=`<rect x="5" y="11" width="1" height="1"/><rect x="6" y="12" width="1" height="1"/><rect x="7" y="11" width="1" height="1"/><rect x="8" y="12" width="1" height="1"/><rect x="9" y="11" width="1" height="1"/><rect x="10" y="12" width="1" height="1"/>`;
+  }
+  return `<svg class="face" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+    <rect x="2" y="2" width="12" height="12" fill="${col}"/>
+    <g fill="#10131f">${brow}${eyes}${mouth}</g>
+  </svg>`;
+}
+
+function buildLevelList(){
+  levelList.innerHTML='';
+  LEVELS.forEach((lv,i)=>{
+    const open=(i+1)<=unlocked, done=cleared.has(i);
+    const el=document.createElement('div');
+    el.className='lvl '+(open?'open':'locked')+(done?' cleared':'');
+    el.innerHTML=`
+      <div class="swatch" style="background:${lv.accent}"></div>
+      <div class="num">${i+1}</div>
+      ${difficultyFace(i)}
+      <div class="meta">
+        <div class="nm">${lv.name}</div>
+        <div class="ds">${lv.desc} · boss: ${lv.boss.name}</div>
+      </div>
+      <div class="badge ${done?'star':'lock'}">${ done?'★ CLEAR' : (open?'▶' : '🔒') }</div>`;
+    if(open) el.onclick=()=>startLevel(i);
+    levelList.appendChild(el);
+  });
+}
+
+// Fixed-timestep loop: simulate in 1/60s steps regardless of display refresh,
+// so the game plays identically on 60Hz and 120Hz+ screens. Render once per frame.
+const STEP = 1000/60;      // ms per simulation tick
+let lastT = performance.now(), acc = 0;
+function loop(now){
+  requestAnimationFrame(loop);
+  let elapsed = now - lastT; lastT = now;
+  if(elapsed > 250) elapsed = 250;          // clamp after tab-switch / long stalls
+  if(running){
+    acc += elapsed;
+    let steps = 0;
+    while(acc >= STEP && steps < 5){          // cap catch-up steps to avoid spirals
+      update();
+      acc -= STEP; steps++;
+    }
+    draw();
+  } else {
+    acc = 0;                                  // don't accumulate time while paused/menus
+  }
+}
+requestAnimationFrame(loop);
+
+// ---- PWA service worker registration (no-op in sandboxed previews) ----
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('service-worker.js').catch(()=>{ /* offline support unavailable */ });
+  });
+}
+</script>
+</body>
+</html>
