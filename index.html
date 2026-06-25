@@ -274,9 +274,11 @@
       You fire on your own. Your job is to <b>move</b> and to <b>switch which version of yourself you are</b>.<br><br>
       <span class="o">◆ OFFENSE</span> — guns blaze, full damage taken.<br>
       <span class="d">▣ DEFENSE</span> — a shield eats &amp; reflects bullets, but you stop firing. Burns stamina.<br><br>
-      <b>Move:</b> <span class="key">WASD / arrows</span> or drag &nbsp;·&nbsp;
-      <b>Stance:</b> <span class="key">SPACE / SHIFT</span> or hold the button<br>
-      <span style="color:#7dd3ff">collect gems to unlock upgrades</span> · <span style="color:#3a4060">M to mute</span>
+      <span id="controlsHint">
+        <b>Move:</b> <span class="key">WASD / arrows</span> or drag &nbsp;·&nbsp;
+        <b>Stance:</b> <span class="key">SPACE / SHIFT</span> or hold the button
+      </span><br>
+      <span style="color:#7dd3ff">collect gems to unlock upgrades</span><span id="muteHint"> · <span style="color:#3a4060">M to mute</span></span>
     </div>
     <button id="startBtn">BEGIN</button>
     <div id="musicPick">
@@ -899,7 +901,7 @@ function startLevel(idx){
   waveTotal=0;
   gems=[]; gemCount=0; gemGoal=18; paused=false; timeScale=1;
   orbs=[]; rockets=[]; bombs=[]; beams=[];
-  upgrades={ dmgReduce:0, fireRate:0, orb:0, rocket:0, bomb:0, magnet:0, multishot:0, laser:0 };
+  upgrades={ dmgReduce:0, fireRate:0, orb:0, rocket:0, bomb:0, magnet:0, multishot:0, laser:0, stamina:0 };
   cam={x:player.x-VIEW/2,y:player.y-VIEW/2};
   makeStars();
   buildBossProg();
@@ -1063,7 +1065,7 @@ function update(){
   if(def && !player.defense) SFX.stanceOn();
   else if(!def && player.defense) SFX.stanceOff();
   player.defense=def;
-  if(def){ player.sta-=0.55; if(player.sta<=0){player.sta=0;player.staLock=true;} }
+  if(def){ player.sta-=0.55*Math.pow(0.82,upgrades.stamina); if(player.sta<=0){player.sta=0;player.staLock=true;} }
   else { player.sta+=0.45; if(player.sta>=player.maxSta)player.sta=player.maxSta;
          if(player.staLock&&player.sta>player.maxSta*0.3)player.staLock=false; }
 
@@ -1327,6 +1329,9 @@ const UPGRADES = [
   { key:'laser', max:4, icon:'✦', name:'LANCE',
     desc:k=> k===0?'Charge a piercing beam that spears everything in line':`Stronger, faster laser (lvl ${k+1})`,
     color:'#ff3df0' },
+  { key:'stamina', max:4, icon:'❖', name:'ENDURANCE',
+    desc:k=>`Shield drains ${Math.round((1-Math.pow(0.82,k+1))*100)}% slower`,
+    color:'#3ddc97' },
   { key:'magnet', max:3, icon:'⟴', name:'MAGNET',
     desc:k=>`Larger gem pickup range (lvl ${k+1})`,
     color:'#9af5cf' },
@@ -1900,6 +1905,25 @@ function loop(now){
 // ---- startup: now that SFX and all state are defined, load saved data and reflect it ----
 loadProgress();
 applyMusicPref();
+
+// detect a touch-primary device and tailor the intro control hints
+const isTouch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+(function setControlHints(){
+  const el = document.getElementById('controlsHint');
+  if(!el) return;
+  if(isTouch){
+    el.innerHTML =
+      '<b>Move:</b> <span class="key">drag anywhere</span><br>' +
+      '<b>Shield:</b> <span class="key">hold the ▣ button</span> (bottom-right)';
+  } else {
+    el.innerHTML =
+      '<b>Move:</b> <span class="key">WASD</span> or <span class="key">arrow keys</span><br>' +
+      '<b>Shield:</b> hold <span class="key">SPACEBAR</span> (or <span class="key">SHIFT</span>) — release to fire again';
+  }
+  // the M-key mute hint only applies to keyboard devices
+  const mh = document.getElementById('muteHint');
+  if(mh && isTouch) mh.style.display='none';
+})();
 
 requestAnimationFrame(loop);
 
