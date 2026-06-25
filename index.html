@@ -470,8 +470,11 @@ function saveProgress(){
 // after SFX and all game state are defined (avoids temporal-dead-zone errors).
 
 const keys = {};
-let dragActive=false, lastDX=0, lastDY=0, dragDX=0, dragDY=0;
 let wantDefense=false;
+// ---- virtual joystick (mobile): touch the left half to spawn a floating stick ----
+const joy = { active:false, id:null, ox:0, oy:0, dx:0, dy:0, mag:0 };  // ox/oy = base in screen px
+const JOY_RADIUS = 46;        // max thumb travel (screen pixels)
+const isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
 addEventListener('keydown', e=>{
   if(e.repeat) return;
@@ -485,20 +488,49 @@ addEventListener('keyup', e=>{
   keys[e.key.toLowerCase()]=false;
   if(e.key===' '||e.key==='Shift') wantDefense=false;
 });
-function canvasPos(ev){
+
+// screen-pixel position of a touch/mouse event relative to the canvas element
+function screenPos(t){
   const r=cv.getBoundingClientRect();
-  const t=ev.touches?ev.touches[0]:ev;
   return { x:(t.clientX-r.left)/r.width*VIEW, y:(t.clientY-r.top)/r.height*VIEW };
 }
-function startDrag(ev){ dragActive=true; const p=canvasPos(ev); lastDX=p.x; lastDY=p.y; dragDX=0; dragDY=0; ev.preventDefault(); }
-function moveDrag(ev){ if(!dragActive) return; const p=canvasPos(ev); dragDX+=p.x-lastDX; dragDY+=p.y-lastDY; lastDX=p.x; lastDY=p.y; ev.preventDefault(); }
-function endDrag(){ dragActive=false; dragDX=0; dragDY=0; }
-cv.addEventListener('mousedown', startDrag);
-addEventListener('mousemove', moveDrag);
-addEventListener('mouseup', endDrag);
-cv.addEventListener('touchstart', startDrag, {passive:false});
-cv.addEventListener('touchmove', moveDrag, {passive:false});
-cv.addEventListener('touchend', endDrag);
+function joyStart(t){
+  const p=screenPos(t);
+  if(p.x > VIEW*0.55) return false;      // right side reserved for the shield button / aiming-free zone
+  joy.active=true; joy.id=(t.identifier!==undefined?t.identifier:'mouse');
+  joy.ox=p.x; joy.oy=p.y; joy.dx=0; joy.dy=0; joy.mag=0;
+  return true;
+}
+function joyMove(t){
+  if(!joy.active) return;
+  const p=screenPos(t);
+  let dx=p.x-joy.ox, dy=p.y-joy.oy;
+  const d=Math.hypot(dx,dy);
+  const max=JOY_RADIUS*(VIEW/cv.getBoundingClientRect().width); // convert px → game units
+  if(d>max){ dx=dx/d*max; dy=dy/d*max; }
+  joy.dx=dx; joy.dy=dy; joy.mag=Math.min(1, d/max);
+}
+function joyEnd(){ joy.active=false; joy.id=null; joy.dx=0; joy.dy=0; joy.mag=0; }
+
+// touch: multi-touch aware (so you can move + hold shield at once)
+cv.addEventListener('touchstart', ev=>{
+  for(const t of ev.changedTouches){ if(joyStart(t)) { break; } }
+  ev.preventDefault();
+}, {passive:false});
+cv.addEventListener('touchmove', ev=>{
+  for(const t of ev.changedTouches){ if(joy.active && t.identifier===joy.id) joyMove(t); }
+  ev.preventDefault();
+}, {passive:false});
+cv.addEventListener('touchend', ev=>{
+  for(const t of ev.changedTouches){ if(joy.active && t.identifier===joy.id) joyEnd(); }
+}, {passive:false});
+cv.addEventListener('touchcancel', joyEnd);
+
+// mouse (desktop testing of the stick; keyboard is the primary desktop control)
+cv.addEventListener('mousedown', ev=>{ joyStart(ev); });
+addEventListener('mousemove', ev=>{ if(joy.active && joy.id==='mouse') joyMove(ev); });
+addEventListener('mouseup', ()=>{ if(joy.id==='mouse') joyEnd(); });
+
 stanceBtn.addEventListener('touchstart', e=>{wantDefense=true;e.preventDefault();},{passive:false});
 stanceBtn.addEventListener('touchend', e=>{wantDefense=false;e.preventDefault();},{passive:false});
 stanceBtn.addEventListener('mousedown', ()=>wantDefense=true);
@@ -900,6 +932,7 @@ function startLevel(idx){
   boss=null; bossActive=false; phase='waves';
   waveTotal=0;
   gems=[]; gemCount=0; gemGoal=18; paused=false; timeScale=1;
+  joy.active=false; joy.dx=0; joy.dy=0; joy.mag=0;
   orbs=[]; rockets=[]; bombs=[]; beams=[];
   upgrades={ dmgReduce:0, fireRate:0, orb:0, rocket:0, bomb:0, magnet:0, multishot:0, laser:0, stamina:0 };
   cam={x:player.x-VIEW/2,y:player.y-VIEW/2};
@@ -1052,7 +1085,12 @@ function update(){
   if(keys['s']||keys['arrowdown'])mvy+=1;
   const sp=1.8;
   if(mvx||mvy){const m=Math.hypot(mvx,mvy);player.x+=mvx/m*sp;player.y+=mvy/m*sp;}
-  if(dragActive&&(dragDX||dragDY)){player.x+=dragDX;player.y+=dragDY;dragDX=0;dragDY=0;}
+  // virtual joystick: move in its direction, speed scaled by how far it's pushed
+  if(joy.active && joy.mag>0.08){
+    const d=Math.hypot(joy.dx,joy.dy)||1;
+    player.x += (joy.dx/d)*sp*joy.mag;
+    player.y += (joy.dy/d)*sp*joy.mag;
+  }
   player.x=Math.max(player.r,Math.min(WORLD-player.r,player.x));
   player.y=Math.max(player.r,Math.min(WORLD-player.r,player.y));
 
@@ -1751,6 +1789,21 @@ function draw(){
   }
 
   drawPointers();
+  drawJoystick();
+}
+
+// floating joystick rendered in screen space (game-pixel coords, no camera offset)
+function drawJoystick(){
+  if(!joy.active) return;
+  const bx=Math.round(joy.ox), by=Math.round(joy.oy);
+  const tx=Math.round(joy.ox+joy.dx), ty=Math.round(joy.oy+joy.dy);
+  const baseR=Math.round(JOY_RADIUS*(VIEW/cv.getBoundingClientRect().width));
+  // base ring
+  ctx.globalAlpha=0.35; pxRing(bx,by,baseR,'#7dd3ff'); pxRing(bx,by,baseR-1,'#7dd3ff');
+  ctx.globalAlpha=0.18; pxDisc(bx,by,baseR-2,'#1d3a52');
+  // thumb
+  ctx.globalAlpha=0.85; pxDisc(tx,ty,Math.max(5,Math.round(baseR*0.42)),'#7dd3ff');
+  ctx.globalAlpha=1; pxDisc(tx,ty,2,'#dffaff');
 }
 
 function drawPointers(){
@@ -1913,7 +1966,7 @@ const isTouch = window.matchMedia && window.matchMedia('(pointer: coarse)').matc
   if(!el) return;
   if(isTouch){
     el.innerHTML =
-      '<b>Move:</b> <span class="key">drag anywhere</span><br>' +
+      '<b>Move:</b> <span class="key">touch &amp; drag the left side</span> (a stick appears)<br>' +
       '<b>Shield:</b> <span class="key">hold the ▣ button</span> (bottom-right)';
   } else {
     el.innerHTML =
