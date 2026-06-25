@@ -86,13 +86,28 @@
   .seg.done > i{width:100%}
 
   /* gem counter */
+  /* upgrade progress: the prominent full-width bar above HULL/STAMINA */
   #gemHud{
-    position:absolute;bottom:74px;right:16px;display:flex;align-items:center;gap:4px;
-    font-size:clamp(18px,4vw,26px);text-shadow:0 2px 0 #000;
+    position:absolute;bottom:46px;left:14px;right:14px;
+    text-shadow:0 1px 0 #000;
   }
-  #gemHud .gemIcon{color:#7dd3ff;font-size:clamp(16px,3.6vw,22px)}
-  #gemNum{color:var(--ink)}
-  #gemHud .gemGoal{color:var(--dim);font-size:clamp(14px,3vw,18px)}
+  #gemHud .gemTop{
+    display:flex;align-items:center;justify-content:space-between;
+    font-size:12px;letter-spacing:2px;margin-bottom:3px;
+  }
+  #gemHud .gemTop .lbl{color:#7dd3ff}
+  #gemHud .gemTop .cnt{color:var(--ink)}
+  #gemHud .gemTop .cnt b{color:#7dd3ff}
+  #gemBar{
+    height:11px;background:#000;border:2px solid #1d3a52;position:relative;overflow:hidden;
+  }
+  #gemBar > i{
+    display:block;height:100%;width:0;
+    background:linear-gradient(90deg,#3a7fb5,#7dd3ff);
+    transition:width .12s linear;
+  }
+  #gemBar.full{border-color:#7dd3ff;box-shadow:0 0 8px rgba(125,211,255,.5)}
+  #gemBar.full > i{background:#9ae0ff}
 
   /* upgrade shop */
   #shop{justify-content:center;gap:18px;background:rgba(8,10,20,.95)}
@@ -113,18 +128,25 @@
   .card .cname .lvl{font-size:clamp(13px,3vw,16px);color:var(--amber);letter-spacing:1px}
   .card .cdesc{font-size:clamp(14px,3.2vw,18px);color:var(--dim);line-height:1.25;margin-top:3px}
 
+  /* bottom HUD: HULL (left) + STAMINA (right) on the bottom row, side by side */
   .bar{
-    position:absolute;left:14px;right:14px;height:14px;
+    position:absolute;bottom:18px;height:18px;width:calc(50% - 22px);
     background:#000;border:2px solid var(--grid);
   }
   .bar > i{display:block;height:100%;width:100%;transition:width .08s linear}
-  #hpBar{bottom:40px}
+  #hpBar{left:14px}
   #hpBar i{background:var(--off)}
-  #staBar{bottom:18px}
+  #staBar{right:14px}
   #staBar i{background:var(--def)}
-  .barLabel{position:absolute;font-size:14px;color:var(--dim);text-shadow:0 1px 0 #000}
-  #hpLabel{bottom:54px;left:16px}
-  #staLabel{bottom:32px;left:16px}
+  /* labels sit inside each bar */
+  .barLabel{
+    position:absolute;bottom:18px;height:18px;display:flex;align-items:center;
+    font-size:11px;letter-spacing:2px;color:#fff;
+    text-shadow:0 1px 2px #000,0 0 2px #000;line-height:1;
+    pointer-events:none;
+  }
+  #hpLabel{left:20px}
+  #staLabel{right:20px;justify-content:flex-end}
 
   /* boss bar */
   #bossWrap{position:absolute;top:74px;left:24px;right:24px;display:none}
@@ -159,6 +181,17 @@
   button:active{transform:translateY(4px);box-shadow:0 1px 0 #b13a47}
   button.ghost{background:transparent;color:var(--def);box-shadow:none;border:2px solid var(--def);padding:8px 22px;font-size:clamp(16px,3.6vw,22px)}
   button.ghost:active{transform:translateY(2px)}
+
+  #musicPick{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:14px}
+  #musicPick .mpLabel{color:var(--dim);font-size:clamp(13px,3vw,17px);letter-spacing:2px;margin-right:2px}
+  .mpBtn{
+    font-family:inherit;cursor:pointer;background:transparent;color:var(--dim);
+    border:2px solid var(--grid);box-shadow:none;
+    padding:5px 12px;font-size:clamp(13px,3vw,17px);letter-spacing:2px;
+  }
+  .mpBtn:active{transform:translateY(1px)}
+  .mpBtn.sel{color:#7dd3ff;border-color:#7dd3ff}
+  .mpBtn.mpOff.sel{color:var(--off);border-color:var(--off)}
 
   #select{justify-content:flex-start;gap:0}
   #select h2{font-size:clamp(30px,8vw,56px);letter-spacing:4px;margin-top:6px}
@@ -199,7 +232,7 @@
     pointer-events:auto;box-shadow:0 4px 0 rgba(0,0,0,.5);
   }
   #stanceBtn:active{transform:translateY(3px)}
-  @media (pointer:coarse){ #stanceBtn.show{display:flex} }
+  @media (pointer:coarse){ #stanceBtn.show{display:flex} #stanceBtn{bottom:96px} }
 
   .corner{position:absolute;width:10px;height:10px;border:2px solid var(--grid);pointer-events:none}
   .corner.tl{top:6px;left:6px;border-right:0;border-bottom:0}
@@ -221,7 +254,10 @@
     <div id="score">0</div>
     <div id="bossProg"><span class="skull">☠</span><div id="segs"></div></div>
     <div id="bossWrap"><div id="bossName">BOSS</div><div id="bossBar"><i></i></div></div>
-    <div id="gemHud"><span class="gemIcon">◆</span><span id="gemNum">0</span><span class="gemGoal" id="gemGoalNum">/18</span></div>
+    <div id="gemHud">
+      <div class="gemTop"><span class="lbl">◆ UPGRADE</span><span class="cnt"><b id="gemNum">0</b><span id="gemGoalNum">/18</span></span></div>
+      <div id="gemBar"><i></i></div>
+    </div>
     <div class="barLabel" id="hpLabel">HULL</div>
     <div class="bar" id="hpBar"><i></i></div>
     <div class="barLabel" id="staLabel">STAMINA</div>
@@ -243,6 +279,13 @@
       <span style="color:#7dd3ff">collect gems to unlock upgrades</span> · <span style="color:#3a4060">M to mute</span>
     </div>
     <button id="startBtn">BEGIN</button>
+    <div id="musicPick">
+      <span class="mpLabel">MUSIC</span>
+      <button class="mpBtn" data-style="chip">CHIP</button>
+      <button class="mpBtn" data-style="synth">SYNTH</button>
+      <button class="mpBtn" data-style="pulse">PULSE</button>
+      <button class="mpBtn mpOff" data-style="off">OFF</button>
+    </div>
   </div>
 
   <div id="select" class="screen hidden">
@@ -283,7 +326,32 @@ const levelList = document.getElementById('levelList');
 const shopScreen = document.getElementById('shop');
 const gemNumEl = document.getElementById('gemNum');
 const gemGoalEl = document.getElementById('gemGoalNum');
+const gemFill = document.querySelector('#gemBar i');
+const gemBarEl = document.getElementById('gemBar');
 document.getElementById('startBtn').onclick = openSelect;
+
+// music style picker (title screen)
+let musicEnabled = true;
+function applyMusicPref(){
+  musicEnabled = (prefMusicStyle !== 'off');
+  if(musicEnabled) SFX.setStyle(prefMusicStyle);
+  // highlight selected button
+  document.querySelectorAll('.mpBtn').forEach(b=>{
+    b.classList.toggle('sel', b.dataset.style === prefMusicStyle);
+  });
+}
+document.querySelectorAll('.mpBtn').forEach(btn=>{
+  btn.onclick = ()=>{
+    prefMusicStyle = btn.dataset.style;
+    SFX.resume();
+    applyMusicPref();
+    if(!musicEnabled) SFX.stopMusic(); else SFX.playMusic('menu');
+    saveProgress();
+  };
+});
+// play background music only if not turned off
+function bgm(spec){ if(musicEnabled) SFX.playMusic(spec); else SFX.stopMusic(); }
+// note: applyMusicPref() is called after loadProgress() initializes prefMusicStyle
 
 // ===================================================================
 // ENEMY KINDS — keyed by polygon edge count. Each edge count has its
@@ -373,6 +441,7 @@ let unlocked = 1;
 const cleared = new Set();
 let bestScore = 0;
 let prefMuted = false;
+let prefMusicStyle = 'chip';   // 'chip' | 'synth' | 'pulse' | 'off'
 
 function loadProgress(){
   try {
@@ -383,6 +452,7 @@ function loadProgress(){
       if(Array.isArray(s.cleared)) s.cleared.forEach(i=>cleared.add(i));
       if(typeof s.bestScore === 'number') bestScore = s.bestScore;
       if(typeof s.muted === 'boolean') prefMuted = s.muted;
+      if(typeof s.musicStyle === 'string') prefMusicStyle = s.musicStyle;
     }
   } catch(e){ /* storage unavailable (e.g. sandbox) — stay in memory */ }
   if(DEBUG_UNLOCK_ALL) unlocked = 99;
@@ -390,11 +460,12 @@ function loadProgress(){
 function saveProgress(){
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      unlocked, cleared:[...cleared], bestScore, muted:prefMuted
+      unlocked, cleared:[...cleared], bestScore, muted:prefMuted, musicStyle:prefMusicStyle
     }));
   } catch(e){ /* ignore */ }
 }
-loadProgress();
+// loadProgress() and applyMusicPref() are invoked at the end of the script,
+// after SFX and all game state are defined (avoids temporal-dead-zone errors).
 
 const keys = {};
 let dragActive=false, lastDX=0, lastDY=0, dragDX=0, dragDY=0;
@@ -513,30 +584,61 @@ const SFX = (()=>{
     return 440*Math.pow(2,(semi-9)/12);            // A4=440
   }
 
-  // Tracks: each is { bpm, bass:[...], lead:[...] } as step arrays (16th-ish steps).
-  // '-' = rest, otherwise note name. Lead and bass loop independently per track.
   // ---- musical material ----
   // root note per level so each sector has its own tonal color (cycle of moods)
   const LEVEL_ROOTS = ['A','D','E','G','C','F','B','D','F','A'];
-  // a base 16-step phrase in scale degrees (0=root,2=2nd,4=3rd... minor-ish), -1 = rest
-  const BASE_BASS = [0,0,-1,0,4,-1,0,-1,5,5,-1,5,3,-1,7,-1];
-  const BASE_LEAD = [0,-1,4,0,7,-1,5,4,3,-1,5,7,4,-1,7,-1];   // degrees up high
   // minor scale semitone offsets for degrees 0..7
   const MINOR=[0,2,3,5,7,8,10,12];
-  function degHz(rootName, oct, deg){
-    if(deg<0) return 0;
-    const semi = NF[rootName] + (oct-4)*12 + MINOR[((deg%7)+7)%7] + Math.floor(deg/7)*12;
-    return 440*Math.pow(2,(semi-9)/12);
-  }
+
+  // A chord progression: each entry shifts the whole phrase by N scale-degrees,
+  // so the harmony moves across bars instead of sitting on the root forever.
+  // (i  - VI - III - VII style minor movement → degrees 0,5,2,6 etc.)
+  const PROGS = {
+    battle: [0, 0, 5, 5, 3, 3, 6, 4],     // 8 bars
+    menu:   [0, 3, 5, 4],                  // 4 bars
+    boss:   [0, 6, 5, 3, 0, 6, 4, 2],      // 8 bars, restless
+  };
+  // Several distinct 16-step LEAD phrases. The scheduler rotates through these
+  // bar-by-bar (and picks fills), so you hear an evolving line, not one loop.
+  const LEAD_PHRASES = [
+    [0,-1,4,0,7,-1,5,4, 3,-1,5,7, 4,-1,7,-1],   // A — the original hook
+    [7,-1,5,4,3,-1,2,0, 4,-1,5,7, 9,-1,7,5],    // B — descends then climbs
+    [0,4,7,4, 0,4,7,9, 7,5,4,2, 0,-1,-1,-1],    // C — arpeggiated, breathes at the end
+    [-1,4,-1,5,-1,7,-1,9, -1,7,-1,5,-1,4,-1,2], // D — syncopated off-beats
+  ];
+  const LEAD_FILL =  [9,7,9,11, 9,7,5,4, 7,5,4,2, 0,2,4,7]; // busy fill played on the last bar of a cycle
+  // Bass phrases (root-oriented; the progression handles harmonic motion).
+  const BASS_PHRASES = [
+    [0,0,-1,0, 4,-1,0,-1, 5,5,-1,5, 3,-1,7,-1],
+    [0,-1,0,7, 0,-1,4,-1, 0,-1,0,7, 5,-1,4,-1],
+    [0,0,0,-1, 0,0,0,-1, 5,5,5,-1, 3,3,3,-1],
+  ];
+  const MENU_LEAD = [
+    [0,-1,4,7,-1,4,3,-1, 0,-1,-1,5,0,-1,4,-1],
+    [7,-1,5,-1,4,-1,2,-1, 4,-1,5,-1,7,-1,5,4],
+    [0,2,4,-1,5,-1,4,2, 0,-1,2,-1,-1,4,-1,-1],
+  ];
+  const MENU_BASS = [
+    [0,-1,4,-1,0,-1,2,-1, 5,-1,2,-1,4,-1,3,-1],
+    [0,-1,-1,4,-1,-1,5,-1, 2,-1,-1,4,-1,-1,3,-1],
+  ];
+  const BOSS_LEAD = [
+    [0,3,5,3,7,-1,5,3, 4,7,9,7,5,-1,3,-1],
+    [7,5,3,5,7,9,7,5, 4,5,7,5,3,-1,2,-1],
+    [0,-1,3,-1,5,-1,7,-1, 9,-1,7,-1,5,-1,3,-1],
+  ];
+  const BOSS_BASS = [
+    [0,0,-1,0,0,-1,5,-1, 3,3,-1,3,7,-1,5,-1],
+    [0,0,0,0, 5,5,5,5, 3,3,3,3, 6,6,4,4],
+  ];
 
   // density: as level rises, fill more of the rests in the lead → busier music
   function densify(seq, intensity){          // intensity 0..1
     return seq.map((d,i)=>{
       if(d>=0) return d;
-      const fillChance = intensity*0.7;
-      // deterministic pseudo-fill based on index so the loop stays stable
+      const fillChance = intensity*0.55;
       const r=((i*2654435761)>>>0)/4294967295;
-      return r < fillChance ? (BASE_LEAD[(i+3)%16]>=0?BASE_LEAD[(i+3)%16]:4) : -1;
+      return r < fillChance ? (seq[(i+3)%16]>=0?seq[(i+3)%16]:4) : -1;
     });
   }
 
@@ -545,62 +647,104 @@ const SFX = (()=>{
     const root=LEVEL_ROOTS[idx]||'A';
     const intensity=idx/9;                         // 0 (lvl1) .. 1 (lvl10)
     const bpm=Math.round(112 + intensity*54);      // 112 → 166 bpm
-    const lead = densify(BASE_LEAD, intensity);
     return {
-      bpm, step:0.25, root,
-      bass: BASE_BASS, lead,
-      arp: intensity>0.45,                          // extra arpeggio layer on later levels
-      drive: intensity,                             // controls percussion + bass octave doubling
+      bpm, step:0.25, root, intensity,
+      leadBank: LEAD_PHRASES, bassBank: BASS_PHRASES, fill: LEAD_FILL,
+      prog: PROGS.battle,
+      arp: intensity>0.45,
+      drive: intensity,
+      vary: true,                                   // use the multi-bar varied scheduler
     };
   }
 
-  // boss themes
-  const MENU_TRACK = { bpm:96, step:0.5, root:'A',
-    bass:[0,-1,4,-1,0,-1,2,-1,5,-1,2,-1,4,-1,3,-1],
-    lead:[0,-1,4,7,-1,4,3,-1,0,-1,-1,5,0,-1,4,-1], drive:0.15 };
-  const BOSS_TRACK = { bpm:150, step:0.25, root:'D', boss:true,
-    bass:[0,0,-1,0,0,-1,5,-1,3,3,-1,3,7,-1,5,-1],
-    lead:[0,3,5,3,7,-1,5,3,4,7,9,7,5,-1,3,-1], drive:0.8 };
+  const MENU_TRACK = { bpm:96, step:0.5, root:'A', intensity:0.2,
+    leadBank: MENU_LEAD, bassBank: MENU_BASS, fill: null, prog: PROGS.menu,
+    drive:0.15, vary:true };
+  const BOSS_TRACK = { bpm:150, step:0.25, root:'D', boss:true, intensity:0.8,
+    leadBank: BOSS_LEAD, bassBank: BOSS_BASS, fill: LEAD_FILL, prog: PROGS.boss,
+    arp:true, drive:0.8, vary:true };
   // the FINAL boss (level 10): ethereal — slow, wide, shimmering, major-ish 7ths
   const FINALE_TRACK = { bpm:84, step:0.5, root:'E', boss:true, ethereal:true,
-    // sparse floating bass, long shimmering lead in a brighter mode
     bass:[0,-1,-1,-1,4,-1,-1,-1,2,-1,-1,-1,5,-1,-1,-1],
     lead:[0,-1,4,-1,7,-1,9,-1,7,-1,4,-1,2,-1,4,-1], drive:0.2 };
   const MAJ7=[0,2,4,7,9,11,12,14];                 // brighter scale for the ethereal theme
 
   let musicName=null, musicTrack=null, musicTimer=null, mStep=0, mNextTime=0;
+  let curLead=null, curBass=null, curOffset=0, lastBar=-1;
+  // selectable music styles — change instrument waveforms / character
+  const STYLES = {
+    chip:  { name:'CHIP',  bassW:'triangle', leadW:'square',   arpW:'square',   leadVol:1.0, perc:1.0 },
+    synth: { name:'SYNTH', bassW:'triangle', leadW:'sawtooth', arpW:'triangle', leadVol:0.8, perc:0.7, soft:true },
+    pulse: { name:'PULSE', bassW:'square',   leadW:'square',   arpW:'sawtooth', leadVol:1.1, perc:1.3 },
+  };
+  const STYLE_ORDER=['chip','synth','pulse'];
+  let musicStyle='chip';
+
+  // choose the lead/bass phrase + harmonic offset for a given bar number
+  function pickBar(tr, bar){
+    const prog = tr.prog || [0];
+    curOffset = prog[bar % prog.length];                 // chord movement
+    // rotate lead phrases, but not strictly in order — every 4th bar jump around,
+    // and play the busy fill on the last bar before the progression repeats
+    const lb = tr.leadBank, bb = tr.bassBank;
+    if(tr.fill && (bar % prog.length) === prog.length-1){
+      curLead = tr.fill;
+    } else {
+      // pseudo-random but stable per bar: vary order so it doesn't feel like A,B,C,A,B,C
+      const pick = ( (bar*5 + (bar>>1)*3) % lb.length );
+      curLead = lb[pick];
+    }
+    curBass = bb[ (bar + (bar>>2)) % bb.length ];
+    // at higher intensity, densify the chosen lead so late levels feel busier
+    if(tr.intensity>0.5 && curLead!==tr.fill) curLead = densify(curLead, tr.intensity);
+  }
+
   function scheduleMusic(){
     if(!ac || !musicTrack) return;
     const tr=musicTrack;
+    const st=STYLES[musicStyle]||STYLES.chip;
     const stepDur=tr.step * (120/tr.bpm);
     const lookahead=0.25;
     const scale = tr.ethereal ? MAJ7 : MINOR;
-    const sHz=(oct,deg)=>{ if(deg<0)return 0; const semi=NF[tr.root]+(oct-4)*12+scale[((deg%7)+7)%7]+Math.floor(deg/7)*12; return 440*Math.pow(2,(semi-9)/12); };
+    const sHz=(oct,deg)=>{ if(deg<0)return 0; const d=deg+ (tr.ethereal?0:curOffset); const semi=NF[tr.root]+(oct-4)*12+scale[((d%7)+7)%7]+Math.floor(d/7)*12; return 440*Math.pow(2,(semi-9)/12); };
     while(mNextTime < ac.currentTime + lookahead){
-      const bi=mStep % tr.bass.length, li=mStep % tr.lead.length;
-      if(!muted){
-        if(tr.ethereal){
-          // long, soft, detuned pads + bell-like lead = "etheral and cool"
+      if(tr.ethereal){
+        // ethereal finale keeps its fixed, floating phrase (no bar rotation)
+        const bi=mStep % tr.bass.length, li=mStep % tr.lead.length;
+        if(!muted){
           mnote('triangle', sHz(2,tr.bass[bi]), mNextTime, stepDur*2.4, 0.42);
           const lf=sHz(5,tr.lead[li]);
           if(lf){ mnote('sine', lf, mNextTime, stepDur*2.0, 0.30);
-                  mnote('sine', lf*1.003, mNextTime, stepDur*2.0, 0.16);   // shimmer detune
-                  mnote('triangle', lf*2, mNextTime, stepDur*1.2, 0.07); } // soft bell octave
-          // sparse high sparkle
+                  mnote('sine', lf*1.003, mNextTime, stepDur*2.0, 0.16);
+                  mnote('triangle', lf*2, mNextTime, stepDur*1.2, 0.07); }
           if(mStep%8===2) mnote('sine', sHz(6,7), mNextTime, stepDur*1.5, 0.12);
-        } else {
-          // bass (octave-doubled when driving hard)
-          mnote('triangle', sHz(2,tr.bass[bi]), mNextTime, stepDur*0.95, 0.5);
-          if(tr.drive>0.6 && tr.bass[bi]>=0) mnote('triangle', sHz(3,tr.bass[bi]), mNextTime, stepDur*0.6, 0.2);
-          // lead
-          mnote('square', sHz(5,tr.lead[li]), mNextTime, stepDur*0.8, 0.26);
-          // arpeggio layer on busier tracks
-          if(tr.arp){ const ad=[0,4,7,4][mStep%4]; mnote('square', sHz(6,ad), mNextTime, stepDur*0.5, 0.12); }
-          // percussion: kick on the beat, hat off-beat, more with drive
-          if(mStep%4===0) noise(mNextTime,0.05,0.10+0.08*(tr.drive||0), 140, 1.2);
-          if(mStep%2===1) noise(mNextTime,0.03,0.05+0.06*(tr.drive||0), 2600, 1.0);
-          if((tr.drive>0.7) && mStep%4===2) noise(mNextTime,0.04,0.08, 900, 1.0); // extra snare-ish
         }
+        mNextTime += stepDur; mStep++; continue;
+      }
+      // varied tracks: assemble per-bar
+      const bar = Math.floor(mStep/16);
+      if(bar !== lastBar){ pickBar(tr, bar); lastBar=bar; }
+      const step16 = mStep % 16;
+      const ld = curLead[step16], bd = curBass[step16];
+      if(!muted){
+        // bass (octave-doubled when driving hard)
+        mnote(st.bassW, sHz(2,bd), mNextTime, stepDur*0.95, 0.5);
+        if(tr.drive>0.6 && bd>=0) mnote(st.bassW, sHz(3,bd), mNextTime, stepDur*0.6, 0.2);
+        // lead
+        mnote(st.leadW, sHz(5,ld), mNextTime, stepDur*(st.soft?1.0:0.8), 0.26*st.leadVol);
+        if(st.soft && ld>=0) mnote('sine', sHz(4,ld), mNextTime, stepDur*1.6, 0.10);
+        // occasional harmony note a third above the lead, for richness (not every bar)
+        if(ld>=0 && (bar%2===1) && step16%4===0) mnote(st.leadW, sHz(5,ld+2), mNextTime, stepDur*0.6, 0.10*st.leadVol);
+        // arpeggio layer on busier tracks, pattern shifts each bar
+        if(tr.arp){ const pat=[[0,4,7,4],[7,4,0,4],[0,7,4,7]][bar%3]; mnote(st.arpW, sHz(6,pat[mStep%4]), mNextTime, stepDur*0.5, 0.11*st.leadVol); }
+        // sparkle ornament: rare, random, high
+        if(Math.random()<0.015*(tr.intensity||0.3)) mnote('sine', sHz(6, 7), mNextTime, stepDur*0.7, 0.10);
+        // percussion: kick on the beat, hat off-beat, more with drive; fill bar gets extra
+        const pv=st.perc, fill=(tr.fill && curLead===tr.fill);
+        if(mStep%4===0) noise(mNextTime,0.05,(0.10+0.08*(tr.drive||0))*pv, 140, 1.2);
+        if(mStep%2===1) noise(mNextTime,0.03,(0.05+0.06*(tr.drive||0))*pv, 2600, 1.0);
+        if((tr.drive>0.7||fill) && mStep%4===2) noise(mNextTime,0.04,0.08*pv, 900, 1.0);
+        if(fill && step16>=12) noise(mNextTime,0.03,0.07*pv, 1800, 1.0);   // snare roll on fill
       }
       mNextTime += stepDur; mStep++;
     }
@@ -610,10 +754,21 @@ const SFX = (()=>{
     resume(){ ensure(); if(ac && ac.state==='suspended') ac.resume(); },
     toggle(){ muted=!muted; if(master) master.gain.value=muted?0:SFX_VOL; if(musicBus) musicBus.gain.value=muted?0:MUSIC_VOL; return muted; },
     setMuted(v){ muted=!!v; if(master) master.gain.value=muted?0:SFX_VOL; if(musicBus) musicBus.gain.value=muted?0:MUSIC_VOL; },
+    setStyle(s){ if(STYLES[s]) musicStyle=s; },
+    cycleStyle(){ const i=STYLE_ORDER.indexOf(musicStyle); musicStyle=STYLE_ORDER[(i+1)%STYLE_ORDER.length]; return STYLES[musicStyle].name; },
+    getStyle(){ return musicStyle; },
+    getStyleName(){ return STYLES[musicStyle].name; },
     shoot(){
-      if(!ac||muted)return; const t=now();
-      const f=440*semis(rnd(-1.5,1.5));
-      voice('triangle', f, t, 0.06, 0.07, {slideTo:f*0.7});
+      if(!ac||muted)return;
+      const t=now();
+      // throttle: if many shots land in the same instant (multishot), only sound once
+      if(this._lastShot && t - this._lastShot < 0.045) return;
+      this._lastShot = t;
+      // cycle pitches through a soft pentatonic so repeated fire sounds musical, not noisy
+      const pent=[0,3,5,7,10];
+      this._sIdx=((this._sIdx||0)+1)%pent.length;
+      const base=392*semis(pent[this._sIdx] + rnd(-0.4,0.4));   // around G4
+      voice('triangle', base, t, 0.05, 0.035, {slideTo:base*0.78});
     },
     reflect(){
       if(!ac||muted)return; const t=now();
@@ -704,7 +859,7 @@ const SFX = (()=>{
       else if(spec && typeof spec==='object' && 'level' in spec){ key='lvl'+spec.level; track=levelTrack(spec.level); }
       else return;
       if(musicName===key) return;             // already playing this track
-      musicName=key; musicTrack=track; mStep=0; mNextTime=ac.currentTime+0.05;
+      musicName=key; musicTrack=track; mStep=0; mNextTime=ac.currentTime+0.05; lastBar=-1;
       if(!musicTimer) musicTimer=setInterval(scheduleMusic, 60);
       scheduleMusic();
     },
@@ -717,13 +872,16 @@ const SFX = (()=>{
 })();
 // unlock/resume audio on first interaction (browsers require a gesture)
 ['pointerdown','keydown','touchstart'].forEach(ev=>
-  addEventListener(ev, ()=>{ SFX.resume(); SFX.setMuted(prefMuted); }, {once:false, passive:true}));
+  addEventListener(ev, ()=>{ SFX.resume(); SFX.setMuted(prefMuted); if(musicEnabled) SFX.setStyle(prefMusicStyle); }, {once:false, passive:true}));
 
 let player, bullets, ebullets, enemies, particles, stars;
 let score, wave, waveTimer, spawnQueue, running, frame, shootCd, shake, waveTotal;
 let level, levelIdx, cam, boss, bossActive, phase;
 // gems + roguelite upgrades
 let gems, gemCount, gemGoal, orbs, rockets, bombs, beams, upgrades, paused;
+let timeScale = 1;
+// briefly drop into slow motion for emphasis (boss kills, near-death). scale 0..1, dur in real ms
+function slowmo(scale){ timeScale = Math.min(timeScale, scale); }
 const GEM_TYPES = [
   { color:'#ff5d6c', value:1,  w:60 },   // common red
   { color:'#7dd3ff', value:3,  w:28 },   // blue
@@ -739,7 +897,7 @@ function startLevel(idx){
   score=0; wave=0; frame=0; shootCd=0; shake=0;
   boss=null; bossActive=false; phase='waves';
   waveTotal=0;
-  gems=[]; gemCount=0; gemGoal=18; paused=false;
+  gems=[]; gemCount=0; gemGoal=18; paused=false; timeScale=1;
   orbs=[]; rockets=[]; bombs=[]; beams=[];
   upgrades={ dmgReduce:0, fireRate:0, orb:0, rocket:0, bomb:0, magnet:0, multishot:0, laser:0 };
   cam={x:player.x-VIEW/2,y:player.y-VIEW/2};
@@ -749,7 +907,7 @@ function startLevel(idx){
   hud.classList.add('on'); stanceBtn.classList.add('show'); bossWrap.classList.remove('on');
   levelNameEl.textContent=(idx+1)+' · '+level.name;
   titleScreen.classList.add('hidden'); selectScreen.classList.add('hidden'); overlay.classList.add('hidden'); shopScreen.classList.add('hidden');
-  SFX.playMusic({level: idx});
+  bgm({level: idx});
   nextWave();
 }
 
@@ -853,7 +1011,7 @@ function beginBoss(){
       });
     }
   }
-  bossWrap.classList.add('on'); bossNameEl.textContent=b.name; waveEl.textContent='● BOSS'; bossProg.classList.remove('on'); SFX.boss(); SFX.playMusic(levelIdx===LEVELS.length-1 ? 'finale' : 'boss');
+  bossWrap.classList.add('on'); bossNameEl.textContent=b.name; waveEl.textContent='● BOSS'; bossProg.classList.remove('on'); SFX.boss(); bgm(levelIdx===LEVELS.length-1 ? 'finale' : 'boss');
 }
 
 function bossFire(){
@@ -1024,7 +1182,14 @@ function update(){
     }
     if(dist(player.x,player.y,b.x,b.y)<player.r+b.r){ if(!player.defense) damage(0.6); else b.hp-=0.3; }
     bossFill.style.width=Math.max(0,b.hp)/b.maxHp*100+'%';
-    if(b.hp<=0) winLevel();
+    if(b.hp<=0){
+      slowmo(0.15); shake=Math.max(shake,9);
+      spark(b.x,b.y,b.color,40,5); spark(b.x,b.y,'#fff',24,4);
+      SFX.boom(); SFX.kill();
+      bossActive=false; boss=null;            // boss gone; let the slow-mo death play out
+      setTimeout(()=>{ if(phase!=='won') winLevel(); }, 900);
+      phase='dying';
+    }
   }
 
   for(let i=bullets.length-1;i>=0;i--){
@@ -1091,12 +1256,25 @@ function update(){
   else{stanceTag.textContent='◆ OFFENSE';stanceTag.style.color=player.staLock?'var(--dim)':'var(--off)';}
   scoreEl.textContent=score;
   gemNumEl.textContent=gemCount; gemGoalEl.textContent='/'+gemGoal;
+  const gemPct=Math.min(100, gemCount/gemGoal*100);
+  gemFill.style.width=gemPct+'%';
+  gemBarEl.classList.toggle('full', gemCount>=gemGoal);
 }
 
 function damage(n){
   const red=[0,0.15,0.28,0.40,0.50][upgrades?upgrades.dmgReduce:0]||0;
   n=n*(1-red);
-  player.hp-=n; if(n>=1){player.flash=6;shake=4;SFX.hurt();} if(player.hp<=0){player.hp=0;loseLevel();}
+  const before=player.hp;
+  player.hp-=n;
+  if(n>=1){
+    player.flash=6; shake=4; SFX.hurt();
+    // emphasize a big hit, or one that drops you into the danger zone
+    if(n>=12){ shake=Math.max(shake,7); }
+    if(before>player.maxHp*0.25 && player.hp<=player.maxHp*0.25 && player.hp>0){
+      slowmo(0.3); shake=Math.max(shake,8);   // brief gut-punch when you fall to low health
+    }
+  }
+  if(player.hp<=0){ player.hp=0; slowmo(0.25); loseLevel(); }
 }
 function killEnemy(e){ const i=enemies.indexOf(e); if(i>=0)enemies.splice(i,1); score+=e.pts; spark(e.x,e.y,e.color,12,3); shake=Math.max(shake,2); SFX.kill(); dropGems(e); }
 
@@ -1588,7 +1766,7 @@ function drawPointers(){
 
 function winLevel(){
   running=false; bossActive=false; phase='won';
-  cleared.add(levelIdx); SFX.win(); SFX.playMusic('menu');
+  cleared.add(levelIdx); SFX.win(); bgm('menu');
   if(levelIdx+1<LEVELS.length) unlocked=Math.max(unlocked, levelIdx+2);
   if(score>bestScore) bestScore=score;
   saveProgress();
@@ -1611,7 +1789,7 @@ function winLevel(){
 }
 
 function loseLevel(){
-  running=false; bossActive=false; SFX.lose(); SFX.playMusic('menu');
+  running=false; bossActive=false; SFX.lose(); bgm('menu');
   if(score>bestScore){ bestScore=score; saveProgress(); }
   hud.classList.remove('on'); stanceBtn.classList.remove('show'); bossWrap.classList.remove('on');
   const where = phase==='boss' ? `against <b>${level.boss.name}</b>` : `on wave <b>${wave}</b>`;
@@ -1631,7 +1809,7 @@ function loseLevel(){
 
 function openSelect(){
   running=false; paused=false;
-  SFX.playMusic('menu');
+  bgm('menu');
   hud.classList.remove('on'); stanceBtn.classList.remove('show'); bossWrap.classList.remove('on');
   titleScreen.classList.add('hidden'); overlay.classList.add('hidden'); shopScreen.classList.add('hidden');
   buildLevelList();
@@ -1704,8 +1882,10 @@ function loop(now){
   requestAnimationFrame(loop);
   let elapsed = now - lastT; lastT = now;
   if(elapsed > 250) elapsed = 250;          // clamp after tab-switch / long stalls
+  // ease the slow-motion time scale back toward 1
+  if(timeScale < 1){ timeScale += (1-timeScale)*0.06 + 0.004; if(timeScale>0.999) timeScale=1; }
   if(running){
-    acc += elapsed;
+    acc += elapsed * timeScale;             // scaled time → slow motion when timeScale<1
     let steps = 0;
     while(acc >= STEP && steps < 5){          // cap catch-up steps to avoid spirals
       update();
@@ -1716,6 +1896,11 @@ function loop(now){
     acc = 0;                                  // don't accumulate time while paused/menus
   }
 }
+
+// ---- startup: now that SFX and all state are defined, load saved data and reflect it ----
+loadProgress();
+applyMusicPref();
+
 requestAnimationFrame(loop);
 
 // ---- PWA service worker registration (no-op in sandboxed previews) ----
