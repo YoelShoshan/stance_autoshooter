@@ -506,9 +506,11 @@ function saveProgress(){
 
 const keys = {};
 let wantDefense=false;
-// ---- virtual joystick (mobile): touch the left half to spawn a floating stick ----
+// ---- virtual joystick (mobile): a faint stick rests bottom-left; touching the
+//      left side grabs it (floating to your thumb). Idle it's semi-transparent. ----
 const joy = { active:false, id:null, ox:0, oy:0, dx:0, dy:0, mag:0 };  // ox/oy = base in screen px
 const JOY_RADIUS = 46;        // max thumb travel (screen pixels)
+const JOY_HOME = { x:46, y:VIEW-46 };   // resting position (game-pixel coords), bottom-left
 const isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
 addEventListener('keydown', e=>{
@@ -1827,18 +1829,30 @@ function draw(){
   drawJoystick();
 }
 
-// floating joystick rendered in screen space (game-pixel coords, no camera offset)
+// joystick rendered in screen space (game-pixel coords, no camera offset).
+// Idle: a faint stick rests at its home spot. Active: a brighter stick at the thumb.
 function drawJoystick(){
-  if(!joy.active) return;
-  const bx=Math.round(joy.ox), by=Math.round(joy.oy);
-  const tx=Math.round(joy.ox+joy.dx), ty=Math.round(joy.oy+joy.dy);
+  // only show on touch devices (desktop uses keyboard); still shows for mouse-grab on coarse=false? keep touch-only
+  if(!isCoarse && !joy.active) return;
   const baseR=Math.round(JOY_RADIUS*(VIEW/cv.getBoundingClientRect().width));
+  let bx,by,tx,ty,alpha;
+  if(joy.active){
+    bx=Math.round(joy.ox); by=Math.round(joy.oy);
+    tx=Math.round(joy.ox+joy.dx); ty=Math.round(joy.oy+joy.dy);
+    alpha=1;
+  } else {
+    // resting state: faint, centered thumb
+    bx=Math.round(JOY_HOME.x); by=Math.round(JOY_HOME.y);
+    tx=bx; ty=by;
+    alpha=0.35;                          // relatively transparent when untouched
+  }
   // base ring
-  ctx.globalAlpha=0.35; pxRing(bx,by,baseR,'#7dd3ff'); pxRing(bx,by,baseR-1,'#7dd3ff');
-  ctx.globalAlpha=0.18; pxDisc(bx,by,baseR-2,'#1d3a52');
+  ctx.globalAlpha=0.35*alpha; pxRing(bx,by,baseR,'#7dd3ff'); pxRing(bx,by,baseR-1,'#7dd3ff');
+  ctx.globalAlpha=0.18*alpha; pxDisc(bx,by,baseR-2,'#1d3a52');
   // thumb
-  ctx.globalAlpha=0.85; pxDisc(tx,ty,Math.max(5,Math.round(baseR*0.42)),'#7dd3ff');
-  ctx.globalAlpha=1; pxDisc(tx,ty,2,'#dffaff');
+  ctx.globalAlpha=0.85*alpha; pxDisc(tx,ty,Math.max(5,Math.round(baseR*0.42)),'#7dd3ff');
+  ctx.globalAlpha=alpha; pxDisc(tx,ty,2,'#dffaff');
+  ctx.globalAlpha=1;
 }
 
 function drawPointers(){

@@ -1,6 +1,6 @@
 // STANCE — service worker. Caches the game shell so it loads instantly and works offline.
 // ⮕ THIS IS THE ONLY PLACE TO BUMP THE VERSION. The game reads it from here at runtime.
-const CACHE_VERSION = 'stance-v7';
+const CACHE_VERSION = 'stance-v3';
 const ASSETS = [
   './',
   'index.html',
