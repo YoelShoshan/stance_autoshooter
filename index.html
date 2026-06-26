@@ -510,28 +510,32 @@ let wantDefense=false;
 //      left side grabs it (floating to your thumb). Idle it's semi-transparent. ----
 const joy = { active:false, id:null, ox:0, oy:0, dx:0, dy:0, mag:0 };  // ox/oy = base in screen px
 const JOY_RADIUS = 46;        // max thumb travel (screen pixels)
-// resting joystick position, computed to mirror the shield button (bottom-right)
-// onto the bottom-left at the same height. Recomputed on resize.
+// resting joystick position, mirroring the shield button (bottom-right) to bottom-left
+// at the same height. Computed from the rendered geometry, with the canvas border
+// accounted for (the drawing surface sits *inside* the 2px border).
 const JOY_HOME = { x:46, y:VIEW-46 };
+const CANVAS_BORDER = 2;      // keep in sync with the canvas CSS border width
 function computeJoyHome(){
   const cr = cv.getBoundingClientRect();
   const br = stanceBtn.getBoundingClientRect();
-  if(cr.width<=0) return;
-  const toGX = px => (px - cr.left) / cr.width  * VIEW;   // CSS px → game px (x)
-  const toGY = py => (py - cr.top)  / cr.height * VIEW;   // CSS px → game px (y)
-  if(br.width>0){
-    // button centre in game-pixels
-    const bcx = toGX(br.left + br.width/2);
-    const bcy = toGY(br.top  + br.height/2);
-    JOY_HOME.x = VIEW - bcx;     // mirror across the vertical centre line
-    JOY_HOME.y = bcy;            // same height
-  } else {
-    // button hidden (desktop) — fall back to a sensible bottom-left spot
-    JOY_HOME.x = 46; JOY_HOME.y = VIEW-46;
-  }
+  if(cr.width<=0 || br.width<=0){ JOY_HOME.x=46; JOY_HOME.y=VIEW-46; return; }
+  // inner drawing area (exclude the border on each side)
+  const innerLeft = cr.left + CANVAS_BORDER;
+  const innerTop  = cr.top  + CANVAS_BORDER;
+  const innerW = cr.width  - CANVAS_BORDER*2;
+  const innerH = cr.height - CANVAS_BORDER*2;
+  // button centre → game-pixels within the drawing area
+  const bcx = (br.left + br.width/2  - innerLeft) / innerW * VIEW;
+  const bcy = (br.top  + br.height/2 - innerTop ) / innerH * VIEW;
+  JOY_HOME.x = VIEW - bcx;   // mirror across the vertical centre line
+  JOY_HOME.y = bcy;          // identical height
+  // keep the (larger) joystick ring fully on-screen near the left edge
+  const ringG = JOY_RADIUS*(VIEW/Math.max(1,cr.width)) + 4;
+  JOY_HOME.x = Math.max(ringG, JOY_HOME.x);
+  JOY_HOME.y = Math.min(VIEW-ringG, JOY_HOME.y);
 }
-addEventListener('resize', computeJoyHome);
-addEventListener('load', computeJoyHome);
+addEventListener('resize', ()=>setTimeout(computeJoyHome,0));
+addEventListener('load', ()=>setTimeout(computeJoyHome,0));
 const isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
 addEventListener('keydown', e=>{
@@ -998,7 +1002,7 @@ function startLevel(idx){
   buildBossProg();
   running=true;
   hud.classList.add('on'); stanceBtn.classList.add('show'); bossWrap.classList.remove('on');
-  computeJoyHome();   // button is now visible → mirror its position for the joystick
+  setTimeout(computeJoyHome,0);   // button is now visible → mirror its position (after layout)
   levelNameEl.textContent=(idx+1)+' · '+level.name;
   titleScreen.classList.add('hidden'); selectScreen.classList.add('hidden'); overlay.classList.add('hidden'); shopScreen.classList.add('hidden');
   bgm({level: idx});
