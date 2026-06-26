@@ -239,7 +239,7 @@
     pointer-events:auto;box-shadow:0 4px 0 rgba(0,0,0,.5);
   }
   #stanceBtn:active{transform:translateY(3px)}
-  @media (pointer:coarse){ #stanceBtn.show{display:flex} #stanceBtn{bottom:96px} }
+  @media (pointer:coarse){ #stanceBtn.show{display:flex} #stanceBtn{bottom:64px} }
 
   .corner{position:absolute;width:10px;height:10px;border:2px solid var(--grid);pointer-events:none}
   .corner.tl{top:6px;left:6px;border-right:0;border-bottom:0}
@@ -510,7 +510,28 @@ let wantDefense=false;
 //      left side grabs it (floating to your thumb). Idle it's semi-transparent. ----
 const joy = { active:false, id:null, ox:0, oy:0, dx:0, dy:0, mag:0 };  // ox/oy = base in screen px
 const JOY_RADIUS = 46;        // max thumb travel (screen pixels)
-const JOY_HOME = { x:46, y:VIEW-46 };   // resting position (game-pixel coords), bottom-left
+// resting joystick position, computed to mirror the shield button (bottom-right)
+// onto the bottom-left at the same height. Recomputed on resize.
+const JOY_HOME = { x:46, y:VIEW-46 };
+function computeJoyHome(){
+  const cr = cv.getBoundingClientRect();
+  const br = stanceBtn.getBoundingClientRect();
+  if(cr.width<=0) return;
+  const toGX = px => (px - cr.left) / cr.width  * VIEW;   // CSS px → game px (x)
+  const toGY = py => (py - cr.top)  / cr.height * VIEW;   // CSS px → game px (y)
+  if(br.width>0){
+    // button centre in game-pixels
+    const bcx = toGX(br.left + br.width/2);
+    const bcy = toGY(br.top  + br.height/2);
+    JOY_HOME.x = VIEW - bcx;     // mirror across the vertical centre line
+    JOY_HOME.y = bcy;            // same height
+  } else {
+    // button hidden (desktop) — fall back to a sensible bottom-left spot
+    JOY_HOME.x = 46; JOY_HOME.y = VIEW-46;
+  }
+}
+addEventListener('resize', computeJoyHome);
+addEventListener('load', computeJoyHome);
 const isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
 addEventListener('keydown', e=>{
@@ -977,6 +998,7 @@ function startLevel(idx){
   buildBossProg();
   running=true;
   hud.classList.add('on'); stanceBtn.classList.add('show'); bossWrap.classList.remove('on');
+  computeJoyHome();   // button is now visible → mirror its position for the joystick
   levelNameEl.textContent=(idx+1)+' · '+level.name;
   titleScreen.classList.add('hidden'); selectScreen.classList.add('hidden'); overlay.classList.add('hidden'); shopScreen.classList.add('hidden');
   bgm({level: idx});
