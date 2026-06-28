@@ -231,15 +231,7 @@
   .gostat b{color:var(--amber)}
   .btnRow{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
 
-  #stanceBtn{
-    position:absolute;bottom:78px;right:16px;width:84px;height:84px;border-radius:50%;
-    border:3px solid var(--def);background:rgba(61,220,151,.12);
-    color:var(--def);font-size:18px;letter-spacing:1px;
-    display:none;align-items:center;justify-content:center;text-align:center;line-height:1.05;
-    pointer-events:auto;box-shadow:0 4px 0 rgba(0,0,0,.5);
-  }
-  #stanceBtn:active{transform:translateY(3px)}
-  @media (pointer:coarse){ #stanceBtn.show{display:flex} #stanceBtn{bottom:64px} }
+  #stanceBtn{display:none}
 
   .corner{position:absolute;width:10px;height:10px;border:2px solid var(--grid);pointer-events:none}
   .corner.tl{top:6px;left:6px;border-right:0;border-bottom:0}
@@ -271,7 +263,7 @@
     <div class="barLabel" id="staLabel">STAMINA</div>
     <div class="bar" id="staBar"><i></i></div>
   </div>
-  <button id="stanceBtn">HOLD<br>SHIELD</button>
+  <button id="stanceBtn" style="display:none"></button>
 
   <div id="shop" class="screen hidden"></div>
 
@@ -506,36 +498,19 @@ function saveProgress(){
 
 const keys = {};
 let wantDefense=false;
-// ---- virtual joystick (mobile): a faint stick rests bottom-left; touching the
-//      left side grabs it (floating to your thumb). Idle it's semi-transparent. ----
-const joy = { active:false, id:null, ox:0, oy:0, dx:0, dy:0, mag:0 };  // ox/oy = base in screen px
-const JOY_RADIUS = 46;        // max thumb travel (screen pixels)
-// resting joystick position, mirroring the shield button (bottom-right) to bottom-left
-// at the same height. Computed from the rendered geometry, with the canvas border
-// accounted for (the drawing surface sits *inside* the 2px border).
-const JOY_HOME = { x:46, y:VIEW-46 };
-const CANVAS_BORDER = 2;      // keep in sync with the canvas CSS border width
-function computeJoyHome(){
-  const cr = cv.getBoundingClientRect();
-  const br = stanceBtn.getBoundingClientRect();
-  if(cr.width<=0 || br.width<=0){ JOY_HOME.x=46; JOY_HOME.y=VIEW-46; return; }
-  // inner drawing area (exclude the border on each side)
-  const innerLeft = cr.left + CANVAS_BORDER;
-  const innerTop  = cr.top  + CANVAS_BORDER;
-  const innerW = cr.width  - CANVAS_BORDER*2;
-  const innerH = cr.height - CANVAS_BORDER*2;
-  // button centre → game-pixels within the drawing area
-  const bcx = (br.left + br.width/2  - innerLeft) / innerW * VIEW;
-  const bcy = (br.top  + br.height/2 - innerTop ) / innerH * VIEW;
-  JOY_HOME.x = VIEW - bcx;   // mirror across the vertical centre line
-  JOY_HOME.y = bcy;          // identical height
-  // keep the (larger) joystick ring fully on-screen near the left edge
-  const ringG = JOY_RADIUS*(VIEW/Math.max(1,cr.width)) + 4;
-  JOY_HOME.x = Math.max(ringG, JOY_HOME.x);
-  JOY_HOME.y = Math.min(VIEW-ringG, JOY_HOME.y);
-}
-addEventListener('resize', ()=>setTimeout(computeJoyHome,0));
-addEventListener('load', ()=>setTimeout(computeJoyHome,0));
+// ---- on-screen touch controls (mobile), both rendered on the canvas so they
+//      are guaranteed identical in size and mirrored in position. ----
+//      Left = movement joystick (floating). Right = hold-to-shield button.
+const CTRL_R   = 30;                 // radius of BOTH controls, in game-pixels
+const CTRL_Y   = VIEW - 52;          // shared vertical centre (a bit higher than the bottom)
+const CTRL_INSET = 40;               // horizontal inset of each centre from its edge
+const JOY_HOME = { x:CTRL_INSET, y:CTRL_Y };                 // bottom-left
+const SHIELD_POS = { x:VIEW-CTRL_INSET, y:CTRL_Y };          // bottom-right (mirror)
+const JOY_RADIUS = CTRL_R;           // max thumb travel = control radius
+
+const joy = { active:false, id:null, ox:0, oy:0, dx:0, dy:0, mag:0 };
+let shieldTouchId = null;            // which touch is holding the shield
+let touchControls = false;          // show on-screen joystick + shield (during play)
 const isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
 addEventListener('keydown', e=>{
@@ -551,14 +526,16 @@ addEventListener('keyup', e=>{
   if(e.key===' '||e.key==='Shift') wantDefense=false;
 });
 
-// screen-pixel position of a touch/mouse event relative to the canvas element
+// screen-pixel position of a touch/mouse event in game-pixel coords (inside the canvas border)
 function screenPos(t){
   const r=cv.getBoundingClientRect();
   return { x:(t.clientX-r.left)/r.width*VIEW, y:(t.clientY-r.top)/r.height*VIEW };
 }
+function inShield(p){ return Math.hypot(p.x-SHIELD_POS.x, p.y-SHIELD_POS.y) < CTRL_R*1.5; }
+
 function joyStart(t){
   const p=screenPos(t);
-  if(p.x > VIEW*0.55) return false;      // right side reserved for the shield button / aiming-free zone
+  if(p.x > VIEW*0.5) return false;      // left half only; right half is the shield
   joy.active=true; joy.id=(t.identifier!==undefined?t.identifier:'mouse');
   joy.ox=p.x; joy.oy=p.y; joy.dx=0; joy.dy=0; joy.mag=0;
   return true;
@@ -568,35 +545,42 @@ function joyMove(t){
   const p=screenPos(t);
   let dx=p.x-joy.ox, dy=p.y-joy.oy;
   const d=Math.hypot(dx,dy);
-  const max=JOY_RADIUS*(VIEW/cv.getBoundingClientRect().width); // convert px → game units
+  const max=JOY_RADIUS;                 // travel limit in game-pixels
   if(d>max){ dx=dx/d*max; dy=dy/d*max; }
   joy.dx=dx; joy.dy=dy; joy.mag=Math.min(1, d/max);
 }
 function joyEnd(){ joy.active=false; joy.id=null; joy.dx=0; joy.dy=0; joy.mag=0; }
 
-// touch: multi-touch aware (so you can move + hold shield at once)
+// touch handling — multi-touch aware so you can move + shield at once
 cv.addEventListener('touchstart', ev=>{
-  for(const t of ev.changedTouches){ if(joyStart(t)) { break; } }
+  for(const t of ev.changedTouches){
+    const p=screenPos(t);
+    if(inShield(p) && shieldTouchId===null){ shieldTouchId=t.identifier; wantDefense=true; }
+    else if(!joy.active){ joyStart(t); }
+  }
   ev.preventDefault();
 }, {passive:false});
 cv.addEventListener('touchmove', ev=>{
   for(const t of ev.changedTouches){ if(joy.active && t.identifier===joy.id) joyMove(t); }
   ev.preventDefault();
 }, {passive:false});
-cv.addEventListener('touchend', ev=>{
-  for(const t of ev.changedTouches){ if(joy.active && t.identifier===joy.id) joyEnd(); }
-}, {passive:false});
-cv.addEventListener('touchcancel', joyEnd);
+function endTouch(ev){
+  for(const t of ev.changedTouches){
+    if(t.identifier===shieldTouchId){ shieldTouchId=null; wantDefense=false; }
+    if(joy.active && t.identifier===joy.id) joyEnd();
+  }
+}
+cv.addEventListener('touchend', endTouch, {passive:false});
+cv.addEventListener('touchcancel', endTouch, {passive:false});
 
-// mouse (desktop testing of the stick; keyboard is the primary desktop control)
-cv.addEventListener('mousedown', ev=>{ joyStart(ev); });
+// mouse (desktop testing; keyboard remains the primary desktop control)
+cv.addEventListener('mousedown', ev=>{
+  const p=screenPos(ev);
+  if(inShield(p)){ wantDefense=true; shieldTouchId='mouse'; }
+  else joyStart(ev);
+});
 addEventListener('mousemove', ev=>{ if(joy.active && joy.id==='mouse') joyMove(ev); });
-addEventListener('mouseup', ()=>{ if(joy.id==='mouse') joyEnd(); });
-
-stanceBtn.addEventListener('touchstart', e=>{wantDefense=true;e.preventDefault();},{passive:false});
-stanceBtn.addEventListener('touchend', e=>{wantDefense=false;e.preventDefault();},{passive:false});
-stanceBtn.addEventListener('mousedown', ()=>wantDefense=true);
-stanceBtn.addEventListener('mouseup', ()=>wantDefense=false);
+addEventListener('mouseup', ()=>{ if(joy.id==='mouse') joyEnd(); if(shieldTouchId==='mouse'){ shieldTouchId=null; wantDefense=false; } });
 
 // ===================================================================
 // SOUND — tiny WebAudio synth. Retro waveforms, soft envelopes,
@@ -994,15 +978,14 @@ function startLevel(idx){
   boss=null; bossActive=false; phase='waves';
   waveTotal=0;
   gems=[]; gemCount=0; gemGoal=18; paused=false; timeScale=1;
-  joy.active=false; joy.dx=0; joy.dy=0; joy.mag=0;
+  joy.active=false; joy.dx=0; joy.dy=0; joy.mag=0; shieldTouchId=null; wantDefense=false;
   orbs=[]; rockets=[]; bombs=[]; beams=[];
   upgrades={ dmgReduce:0, fireRate:0, orb:0, rocket:0, bomb:0, magnet:0, multishot:0, laser:0, stamina:0 };
   cam={x:player.x-VIEW/2,y:player.y-VIEW/2};
   makeStars();
   buildBossProg();
   running=true;
-  hud.classList.add('on'); stanceBtn.classList.add('show'); bossWrap.classList.remove('on');
-  setTimeout(computeJoyHome,0);   // button is now visible → mirror its position (after layout)
+  hud.classList.add('on'); touchControls=true; bossWrap.classList.remove('on');
   levelNameEl.textContent=(idx+1)+' · '+level.name;
   titleScreen.classList.add('hidden'); selectScreen.classList.add('hidden'); overlay.classList.add('hidden'); shopScreen.classList.add('hidden');
   bgm({level: idx});
@@ -1852,32 +1835,43 @@ function draw(){
   }
 
   drawPointers();
-  drawJoystick();
+  drawTouchControls();
 }
 
-// joystick rendered in screen space (game-pixel coords, no camera offset).
-// Idle: a faint stick rests at its home spot. Active: a brighter stick at the thumb.
-function drawJoystick(){
-  // only show on touch devices (desktop uses keyboard); still shows for mouse-grab on coarse=false? keep touch-only
-  if(!isCoarse && !joy.active) return;
-  const baseR=Math.round(JOY_RADIUS*(VIEW/cv.getBoundingClientRect().width));
-  let bx,by,tx,ty,alpha;
+// Draw one circular touch control: a ring + filled core + a centre glyph.
+// Used for BOTH the joystick base and the shield button → guaranteed symmetric.
+function drawControlCircle(cx, cy, r, color, alpha, glyph){
+  cx=Math.round(cx); cy=Math.round(cy); r=Math.round(r);
+  ctx.globalAlpha=0.45*alpha; pxRing(cx,cy,r,color); pxRing(cx,cy,r-1,color);
+  ctx.globalAlpha=0.16*alpha; pxDisc(cx,cy,r-2,color);
+  ctx.globalAlpha=1;
+}
+
+// Both on-screen controls, rendered together with the same code.
+function drawTouchControls(){
+  if(!touchControls || !isCoarse) return;
+  const r=CTRL_R;
+
+  // ---- LEFT: movement joystick ----
+  // faint base ring at home; brighter floating base+thumb when grabbed
   if(joy.active){
-    bx=Math.round(joy.ox); by=Math.round(joy.oy);
-    tx=Math.round(joy.ox+joy.dx); ty=Math.round(joy.oy+joy.dy);
-    alpha=1;
+    drawControlCircle(joy.ox, joy.oy, r, '#7dd3ff', 0.9);
+    const tx=Math.round(joy.ox+joy.dx), ty=Math.round(joy.oy+joy.dy);
+    ctx.globalAlpha=0.9; pxDisc(tx,ty,Math.max(6,Math.round(r*0.5)),'#7dd3ff');
+    ctx.globalAlpha=1;   pxDisc(tx,ty,2,'#dffaff');
   } else {
-    // resting state: faint, centered thumb
-    bx=Math.round(JOY_HOME.x); by=Math.round(JOY_HOME.y);
-    tx=bx; ty=by;
-    alpha=0.35;                          // relatively transparent when untouched
+    drawControlCircle(JOY_HOME.x, JOY_HOME.y, r, '#7dd3ff', 0.4);
+    ctx.globalAlpha=0.5; pxDisc(JOY_HOME.x, JOY_HOME.y, Math.max(6,Math.round(r*0.5)), '#7dd3ff');
+    ctx.globalAlpha=1;
   }
-  // base ring
-  ctx.globalAlpha=0.35*alpha; pxRing(bx,by,baseR,'#7dd3ff'); pxRing(bx,by,baseR-1,'#7dd3ff');
-  ctx.globalAlpha=0.18*alpha; pxDisc(bx,by,baseR-2,'#1d3a52');
-  // thumb
-  ctx.globalAlpha=0.85*alpha; pxDisc(tx,ty,Math.max(5,Math.round(baseR*0.42)),'#7dd3ff');
-  ctx.globalAlpha=alpha; pxDisc(tx,ty,2,'#dffaff');
+
+  // ---- RIGHT: hold-to-shield ----
+  const sActive = (shieldTouchId!==null);
+  drawControlCircle(SHIELD_POS.x, SHIELD_POS.y, r, '#3ddc97', sActive?0.95:0.45);
+  // shield glyph (a little arc/dome) in the centre
+  ctx.globalAlpha = sActive?1:0.7;
+  pxArc(Math.round(SHIELD_POS.x), Math.round(SHIELD_POS.y)+3, Math.round(r*0.5), Math.PI, Math.PI*2, '#3ddc97');
+  pxDisc(Math.round(SHIELD_POS.x), Math.round(SHIELD_POS.y)+3, 2, '#3ddc97');
   ctx.globalAlpha=1;
 }
 
@@ -1903,7 +1897,7 @@ function winLevel(){
   if(levelIdx+1<LEVELS.length) unlocked=Math.max(unlocked, levelIdx+2);
   if(score>bestScore) bestScore=score;
   saveProgress();
-  hud.classList.remove('on'); stanceBtn.classList.remove('show'); bossWrap.classList.remove('on');
+  hud.classList.remove('on'); touchControls=false; bossWrap.classList.remove('on');
   const last=levelIdx===LEVELS.length-1, next=levelIdx+1;
   overlay.innerHTML=`
     <h1 style="font-size:clamp(40px,11vw,80px);color:var(--def)">SECTOR<br>CLEAR</h1>
@@ -1924,7 +1918,7 @@ function winLevel(){
 function loseLevel(){
   running=false; bossActive=false; SFX.lose(); bgm('menu');
   if(score>bestScore){ bestScore=score; saveProgress(); }
-  hud.classList.remove('on'); stanceBtn.classList.remove('show'); bossWrap.classList.remove('on');
+  hud.classList.remove('on'); touchControls=false; bossWrap.classList.remove('on');
   const where = phase==='boss' ? `against <b>${level.boss.name}</b>` : `on wave <b>${wave}</b>`;
   overlay.innerHTML=`
     <h1 style="font-size:clamp(40px,11vw,80px)">DOWN</h1>
@@ -1943,7 +1937,7 @@ function loseLevel(){
 function openSelect(){
   running=false; paused=false;
   bgm('menu');
-  hud.classList.remove('on'); stanceBtn.classList.remove('show'); bossWrap.classList.remove('on');
+  hud.classList.remove('on'); touchControls=false; bossWrap.classList.remove('on');
   titleScreen.classList.add('hidden'); overlay.classList.add('hidden'); shopScreen.classList.add('hidden');
   buildLevelList();
   selectScreen.classList.remove('hidden');
