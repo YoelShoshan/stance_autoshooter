@@ -98,6 +98,7 @@
     position:absolute;bottom:46px;left:14px;right:14px;
     text-shadow:0 1px 0 #000;
   }
+  #gemHud.ready{ pointer-events:auto; cursor:pointer; }
   #gemHud .gemTop{
     display:flex;align-items:center;justify-content:space-between;
     font-size:12px;letter-spacing:2px;margin-bottom:3px;
@@ -115,6 +116,29 @@
   }
   #gemBar.full{border-color:#7dd3ff;box-shadow:0 0 8px rgba(125,211,255,.5)}
   #gemBar.full > i{background:#9ae0ff}
+
+  /* READY-to-upgrade signal: the whole bar pulses and invites a tap */
+  #gemHud.ready .gemTop .lbl{ color:#ffe9a8; }
+  #gemHud.ready #gemBar{
+    border-color:#ffd23d;
+    animation:gemPulse 0.9s ease-in-out infinite;
+  }
+  #gemHud.ready #gemBar > i{
+    width:100% !important;
+    background:linear-gradient(90deg,#ffb02e,#ffe9a8,#ffb02e);
+    background-size:200% 100%;
+    animation:gemShimmer 1.1s linear infinite;
+  }
+  #gemTapHint{
+    display:none;color:#ffe9a8;font-size:11px;letter-spacing:2px;
+  }
+  #gemHud.ready #gemTapHint{ display:inline; animation:gemBlink 0.9s steps(2,start) infinite; }
+  @keyframes gemPulse{
+    0%,100%{ box-shadow:0 0 6px rgba(255,210,61,.5); transform:translateY(0); }
+    50%    { box-shadow:0 0 16px rgba(255,210,61,.95); transform:translateY(-1px); }
+  }
+  @keyframes gemShimmer{ 0%{background-position:0% 0;} 100%{background-position:-200% 0;} }
+  @keyframes gemBlink{ 0%{opacity:1;} 50%{opacity:0.35;} 100%{opacity:1;} }
 
   /* upgrade shop */
   #shop{justify-content:center;gap:18px;background:rgba(8,10,20,.95)}
@@ -255,7 +279,7 @@
     <div id="bossProg"><span class="skull">☠</span><div id="segs"></div></div>
     <div id="bossWrap"><div id="bossName">BOSS</div><div id="bossBar"><i></i></div></div>
     <div id="gemHud">
-      <div class="gemTop"><span class="lbl">◆ UPGRADE</span><span class="cnt"><b id="gemNum">0</b><span id="gemGoalNum">/18</span></span></div>
+      <div class="gemTop"><span class="lbl" id="gemLbl">◆ UPGRADE</span><span class="cnt"><span id="gemTapHint">TAP TO PICK ▸</span> <b id="gemNum">0</b><span id="gemGoalNum">/18</span></span></div>
       <div id="gemBar"><i></i></div>
     </div>
     <div class="barLabel" id="hpLabel">HULL</div>
@@ -357,7 +381,16 @@ const gemNumEl = document.getElementById('gemNum');
 const gemGoalEl = document.getElementById('gemGoalNum');
 const gemFill = document.querySelector('#gemBar i');
 const gemBarEl = document.getElementById('gemBar');
+const gemHudEl = document.getElementById('gemHud');
+const gemLblEl = document.getElementById('gemLbl');
 document.getElementById('startBtn').onclick = openSelect;
+
+// open the upgrade shop only when the player chooses to (taps the ready bar)
+function tryOpenShop(){
+  if(upgradeReady && running && !paused){ openShop(); }
+}
+gemHudEl.addEventListener('click', tryOpenShop);
+gemHudEl.addEventListener('touchend', e=>{ e.preventDefault(); tryOpenShop(); }, {passive:false});
 
 // music style picker (title screen)
 let musicEnabled = true;
@@ -520,6 +553,7 @@ addEventListener('keydown', e=>{
   if(e.key.toLowerCase()==='h' && running && player){ player.hp=player.maxHp; player.flash=4; } // DEBUG: refill health
   if(e.key.toLowerCase()==='k' && running){ for(let i=enemies.length-1;i>=0;i--) killEnemy(enemies[i]); } // DEBUG: clear all enemies
   if(e.key.toLowerCase()==='m'){ prefMuted=SFX.toggle(); saveProgress(); }
+  if((e.key.toLowerCase()==='u'||e.key==='Enter') && upgradeReady && running && !paused){ openShop(); }
 });
 addEventListener('keyup', e=>{
   keys[e.key.toLowerCase()]=false;
@@ -960,6 +994,7 @@ let level, levelIdx, cam, boss, bossActive, phase;
 // gems + roguelite upgrades
 let gems, gemCount, gemGoal, orbs, rockets, bombs, beams, upgrades, paused;
 let timeScale = 1;
+let upgradeReady = false;   // true when enough gems collected; player taps to open the shop
 // briefly drop into slow motion for emphasis (boss kills, near-death). scale 0..1, dur in real ms
 function slowmo(scale){ timeScale = Math.min(timeScale, scale); }
 const GEM_TYPES = [
@@ -977,7 +1012,7 @@ function startLevel(idx){
   score=0; wave=0; frame=0; shootCd=0; shake=0;
   boss=null; bossActive=false; phase='waves';
   waveTotal=0;
-  gems=[]; gemCount=0; gemGoal=18; paused=false; timeScale=1;
+  gems=[]; gemCount=0; gemGoal=18; paused=false; timeScale=1; upgradeReady=false;
   joy.active=false; joy.dx=0; joy.dy=0; joy.mag=0; shieldTouchId=null; wantDefense=false;
   orbs=[]; rockets=[]; bombs=[]; beams=[];
   upgrades={ dmgReduce:0, fireRate:0, orb:0, rocket:0, bomb:0, magnet:0, multishot:0, laser:0, stamina:0 };
@@ -1345,6 +1380,8 @@ function update(){
   const gemPct=Math.min(100, gemCount/gemGoal*100);
   gemFill.style.width=gemPct+'%';
   gemBarEl.classList.toggle('full', gemCount>=gemGoal);
+  gemHudEl.classList.toggle('ready', upgradeReady && !paused);
+  gemLblEl.textContent = upgradeReady ? '◆ UPGRADE READY' : '◆ UPGRADE';
 }
 
 function damage(n){
@@ -1387,7 +1424,7 @@ function collectGem(g){
   gemCount += g.type.value;
   SFX.gem(g.type.value);
   spark(g.x,g.y,g.type.color,4,1.5);
-  if(gemCount>=gemGoal && !paused) openShop();
+  if(gemCount>=gemGoal && !upgradeReady){ upgradeReady=true; SFX.powerup(); }   // signal only; player chooses when to open
 }
 
 // ---------- roguelite upgrades ----------
@@ -1458,6 +1495,7 @@ function pickUpgrade(key){
   // spend gems, raise next goal
   gemCount=0;
   gemGoal=Math.round(gemGoal*1.6)+6;
+  upgradeReady=false;       // consumed; will re-arm when the new goal is reached
   // instantiate orbs immediately so the count matches
   syncOrbs();
   shopScreen.classList.add('hidden');
@@ -2036,11 +2074,13 @@ const isTouch = window.matchMedia && window.matchMedia('(pointer: coarse)').matc
   if(isTouch){
     el.innerHTML =
       '<b>Move:</b> <span class="key">touch &amp; drag the left side</span> (a stick appears)<br>' +
-      '<b>Shield:</b> <span class="key">hold the ▣ button</span> (bottom-right)';
+      '<b>Shield:</b> <span class="key">hold the ▣ button</span> (bottom-right)<br>' +
+      '<b>Upgrade:</b> <span class="key">tap the UPGRADE bar</span> when it glows';
   } else {
     el.innerHTML =
       '<b>Move:</b> <span class="key">WASD</span> or <span class="key">arrow keys</span><br>' +
-      '<b>Shield:</b> hold <span class="key">SPACEBAR</span> (or <span class="key">SHIFT</span>) — release to fire again';
+      '<b>Shield:</b> hold <span class="key">SPACEBAR</span> (or <span class="key">SHIFT</span>) — release to fire again<br>' +
+      '<b>Upgrade:</b> press <span class="key">U</span> (or click the bar) when it glows';
   }
   // the M-key mute hint only applies to keyboard devices
   const mh = document.getElementById('muteHint');
