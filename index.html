@@ -534,9 +534,9 @@ let wantDefense=false;
 // ---- on-screen touch controls (mobile), both rendered on the canvas so they
 //      are guaranteed identical in size and mirrored in position. ----
 //      Left = movement joystick (floating). Right = hold-to-shield button.
-const CTRL_R   = 30;                 // radius of BOTH controls, in game-pixels
-const CTRL_Y   = VIEW - 52;          // shared vertical centre (a bit higher than the bottom)
-const CTRL_INSET = 40;               // horizontal inset of each centre from its edge
+const CTRL_R   = 28;                 // radius of BOTH controls, in game-pixels
+const CTRL_Y   = VIEW - 82;          // shared vertical centre — sits clear above the HUD bars
+const CTRL_INSET = 38;               // horizontal inset of each centre from its edge
 const JOY_HOME = { x:CTRL_INSET, y:CTRL_Y };                 // bottom-left
 const SHIELD_POS = { x:VIEW-CTRL_INSET, y:CTRL_Y };          // bottom-right (mirror)
 const JOY_RADIUS = CTRL_R;           // max thumb travel = control radius
