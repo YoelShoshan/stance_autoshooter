@@ -221,6 +221,7 @@
   .screen.hidden{display:none}
 
   #title{justify-content:center;gap:18px}
+  #pause{justify-content:center;gap:8px}
   h1{font-size:clamp(54px,15vw,120px);letter-spacing:6px;line-height:.9}
   h1 .o{color:var(--off)} h1 .d{color:var(--def)}
   .tag{color:var(--amber);font-size:clamp(20px,4.6vw,30px);letter-spacing:2px}
@@ -285,6 +286,17 @@
   .btnRow{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
 
   #stanceBtn{display:none}
+  #pauseBtn{
+    position:absolute;top:8px;left:8px;z-index:30;
+    width:34px;height:34px;padding:0;
+    background:rgba(11,13,26,.55);color:var(--dim);
+    border:2px solid var(--grid);border-radius:6px;
+    font-family:inherit;font-size:16px;letter-spacing:2px;line-height:1;
+    display:none;align-items:center;justify-content:center;cursor:pointer;
+    box-shadow:none;
+  }
+  #pauseBtn.on{ display:flex; }
+  #pauseBtn:active{ transform:translateY(1px); }
 
   .corner{position:absolute;width:10px;height:10px;border:2px solid var(--grid);pointer-events:none}
   .corner.tl{top:6px;left:6px;border-right:0;border-bottom:0}
@@ -352,6 +364,19 @@
   </div>
 
   <div id="overlay" class="screen hidden"></div>
+
+  <!-- small in-game pause button (top-left of the playfield) -->
+  <button id="pauseBtn" aria-label="Pause">II</button>
+
+  <!-- pause menu -->
+  <div id="pause" class="screen hidden">
+    <h1 style="font-size:clamp(34px,9vw,64px)">PAUSED</h1>
+    <div class="btnRow" style="flex-direction:column;gap:14px;margin-top:10px">
+      <button id="resumeBtn">RESUME</button>
+      <button class="ghost" id="retryPauseBtn">RETRY LEVEL</button>
+      <button class="ghost" id="exitBtn">EXIT TO MAP</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -361,6 +386,87 @@ const VIEW = 240;
 cv.width = cv.height = VIEW;
 ctx.imageSmoothingEnabled = false;
 const WORLD = 640;
+const NEB_SIZE = 256;   // offscreen nebula texture size (tileable, scrolls with parallax)
+// hex color + alpha (0..1) → "rgba(...)" string
+function hexA(hex, a){
+  const h = hex.replace('#','');
+  const n = parseInt(h.length===3 ? h.split('').map(c=>c+c).join('') : h, 16);
+  return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
+}
+// blend two hex colors, t=0 → a, t=1 → b, returns "#rrggbb"
+function mixHex(a, b, t){
+  const pa=parseInt(a.replace('#',''),16), pb=parseInt(b.replace('#',''),16);
+  const r=Math.round(((pa>>16)&255)*(1-t)+((pb>>16)&255)*t);
+  const g=Math.round(((pa>>8)&255)*(1-t)+((pb>>8)&255)*t);
+  const bl=Math.round((pa&255)*(1-t)+(pb&255)*t);
+  return '#'+((1<<24)|(r<<16)|(g<<8)|bl).toString(16).slice(1);
+}
+function hx3(h){ const n=parseInt(h.replace('#',''),16); return [(n>>16)&255,(n>>8)&255,n&255]; }
+
+// ---- fractal-noise nebula generator (fBm + domain warping = wispy gas clouds) ----
+// Seedable value-noise. Sampled on a torus (period P) so the texture tiles seamlessly.
+function makeNoise(seed){
+  const perm=new Uint8Array(512), t=[];
+  for(let i=0;i<256;i++)t[i]=i;
+  let s=seed>>>0; const rnd=()=>{ s=(s*1664525+1013904223)>>>0; return s/4294967296; };
+  for(let i=255;i>0;i--){ const j=Math.floor(rnd()*(i+1)); const tmp=t[i]; t[i]=t[j]; t[j]=tmp; }
+  for(let i=0;i<512;i++)perm[i]=t[i&255];
+  const fade=t=>t*t*t*(t*(t*6-15)+10), lerp=(a,b,t)=>a+t*(b-a);
+  const grad=(h,x,y)=>{ h&=3; const u=h<2?x:y, v=h<2?y:x; return ((h&1)?-u:u)+((h&2)?-v:v); };
+  // periodic value noise with period P (for seamless tiling)
+  return function(x,y,P){
+    const xi=Math.floor(x),yi=Math.floor(y);
+    const X=((xi%P)+P)%P, Y=((yi%P)+P)%P, X1=(X+1)%P, Y1=(Y+1)%P;
+    const fx=x-xi, fy=y-yi, u=fade(fx), v=fade(fy);
+    const aa=perm[perm[X]+Y], ab=perm[perm[X]+Y1], ba=perm[perm[X1]+Y], bb=perm[perm[X1]+Y1];
+    return (lerp(lerp(grad(aa,fx,fy),grad(ba,fx-1,fy),u),
+                 lerp(grad(ab,fx,fy-1),grad(bb,fx-1,fy-1),u),v))*0.5+0.5;
+  };
+}
+function fbm(noise,x,y,P,oct,lac,gain){
+  let amp=0.5,freq=1,sum=0,norm=0;
+  for(let i=0;i<oct;i++){ sum+=amp*noise(x*freq,y*freq,P*freq); norm+=amp; amp*=gain; freq*=lac; }
+  return sum/norm;
+}
+// render one tileable nebula texture into an offscreen canvas for the given palette
+function buildNebulaTexture(seed, bg, hot, cool, scale, density){
+  const S=NEB_SIZE;
+  const cv=document.createElement('canvas'); cv.width=cv.height=S;
+  const ctx=cv.getContext('2d');
+  const nA=makeNoise(seed), nB=makeNoise(seed^0x9e3779b9);
+  const img=ctx.createImageData(S,S), d=img.data;
+  const bgc=hx3(bg), hotc=hx3(hot), coolc=hx3(cool);
+  const P=Math.max(2, Math.round(S*scale));     // integer noise period → seamless tile
+  const sc=P/S;                                  // so x*sc spans exactly P over the tile
+  for(let y=0;y<S;y++)for(let x=0;x<S;x++){
+    const i=(y*S+x)*4;
+    // domain warp for wispy filaments
+    const wx=fbm(nB, x*sc+5.2, y*sc+1.3, P, 3, 2, 0.5);
+    const wy=fbm(nB, x*sc+9.7, y*sc+4.1, P, 3, 2, 0.5);
+    let n=fbm(nA, x*sc+wx*2.5, y*sc+wy*2.5, P, 5, 2, 0.55);
+    let dens=Math.max(0,(n-0.44)/0.56); dens=Math.pow(dens,1.7)*density;
+    const cmix=fbm(nB, x*sc*0.6+20, y*sc*0.6+30, P, 3, 2, 0.5);
+    const rr=coolc[0]*(1-cmix)+hotc[0]*cmix;
+    const gg=coolc[1]*(1-cmix)+hotc[1]*cmix;
+    const bb=coolc[2]*(1-cmix)+hotc[2]*cmix;
+    d[i]  =Math.min(255,bgc[0]+rr*dens);
+    d[i+1]=Math.min(255,bgc[1]+gg*dens);
+    d[i+2]=Math.min(255,bgc[2]+bb*dens);
+    d[i+3]=255;
+  }
+  ctx.putImageData(img,0,0);
+  // embedded stars
+  let s2=(seed*2654435761)>>>0; const rnd=()=>{ s2=(s2*1664525+1013904223)>>>0; return s2/4294967296; };
+  ctx.globalCompositeOperation='lighter';
+  for(let i=0;i<46;i++){
+    const sx=rnd()*S|0, sy=rnd()*S|0, b=rnd();
+    ctx.fillStyle=`rgba(255,255,255,${0.25+b*0.6})`;
+    ctx.fillRect(sx,sy,1,1);
+    if(b>0.82){ ctx.fillRect(sx-1,sy,3,1); ctx.fillRect(sx,sy-1,1,3); }
+  }
+  ctx.globalCompositeOperation='source-over';
+  return cv;
+}
 
 // Version + input-type readout. The version comes from the service worker
 // (single source of truth — only CACHE_VERSION in service-worker.js needs bumping).
@@ -426,6 +532,28 @@ const upgradeBtnEl = document.getElementById('upgradeBtn');
 upgradeBtnEl.addEventListener('click', tryOpenShop);
 upgradeBtnEl.addEventListener('touchend', e=>{ e.preventDefault(); e.stopPropagation(); tryOpenShop(); }, {passive:false});
 
+// ---- pause menu ----
+const pauseScreen = document.getElementById('pause');
+const pauseBtn = document.getElementById('pauseBtn');
+function pauseGame(){
+  if(!running || paused) return;            // only pause during active play
+  paused=true; running=false;
+  SFX.ui();
+  pauseBtn.classList.remove('on');
+  pauseScreen.classList.remove('hidden');
+}
+function resumeGame(){
+  if(pauseScreen.classList.contains('hidden')) return;
+  pauseScreen.classList.add('hidden');
+  paused=false; running=true;
+  pauseBtn.classList.add('on');
+  SFX.ui();
+}
+pauseBtn.addEventListener('click', pauseGame);
+document.getElementById('resumeBtn').onclick = resumeGame;
+document.getElementById('retryPauseBtn').onclick = ()=>{ pauseScreen.classList.add('hidden'); startLevel(levelIdx); };
+document.getElementById('exitBtn').onclick = ()=>{ pauseScreen.classList.add('hidden'); openSelect(); };
+
 // music style picker (title screen)
 let musicEnabled = true;
 function applyMusicPref(){
@@ -474,16 +602,16 @@ const POLY_NAMES = {3:'TRIANGLES',4:'SQUARES',5:'PENTAGONS',6:'HEXAGONS',7:'HEPT
 
 // per-level cosmetics + boss flavor, indexed 0..9
 const LEVEL_THEME = [
-  { name:'FLATLAND',      bg:'#170d0c', accent:'#ff5d6c', star:'#3a1c1c', boss:'TRINE' },
-  { name:'FOUR CORNERS',  bg:'#0c1018', accent:'#7dd3ff', star:'#1c2c3a', boss:'QUADRANT' },
-  { name:'PENTACLE',      bg:'#1a1408', accent:'#ffc857', star:'#3a3320', boss:'PENTARCH' },
-  { name:'HONEYCOMB',     bg:'#0a1410', accent:'#3ddc97', star:'#1c3a2c', boss:'HEXLORD' },
-  { name:'SEVENFOLD',     bg:'#12091a', accent:'#c77dff', star:'#2c1c3a', boss:'SEPTAGON PRIME' },
-  { name:'OCTAVE',        bg:'#160d05', accent:'#ff9f45', star:'#3a2410', boss:'OCTARCH' },
-  { name:'ENNEAGRAM',     bg:'#06141a', accent:'#5ad1ee', star:'#103038', boss:'NINEFOLD' },
-  { name:'DECAGRAM',      bg:'#1a0814', accent:'#ff6ba8', star:'#380a28', boss:'DECABOSS' },
-  { name:'ULTRAGON',      bg:'#0f1a05', accent:'#9bff5a', star:'#243a10', boss:'HENDECARCH' },
-  { name:'THE LIMIT',     bg:'#05060d', accent:'#ffffff', star:'#2a2a3a', boss:'PERIGEE' }, // circle = ∞ edges
+  { name:'FLATLAND',      bg:'#170d0c', accent:'#ff5d6c', star:'#3a1c1c', boss:'TRINE',           neb:['#ff5d6c','#7a1e2e'] },
+  { name:'FOUR CORNERS',  bg:'#0c1018', accent:'#7dd3ff', star:'#1c2c3a', boss:'QUADRANT',        neb:['#7dd3ff','#1f4a6e'] },
+  { name:'PENTACLE',      bg:'#1a1408', accent:'#ffc857', star:'#3a3320', boss:'PENTARCH',        neb:['#ffc857','#7a5a12'] },
+  { name:'HONEYCOMB',     bg:'#0a1410', accent:'#3ddc97', star:'#1c3a2c', boss:'HEXLORD',         neb:['#3ddc97','#155a3e'] },
+  { name:'SEVENFOLD',     bg:'#12091a', accent:'#c77dff', star:'#2c1c3a', boss:'SEPTAGON PRIME',  neb:['#c77dff','#4a1f7a'] },
+  { name:'OCTAVE',        bg:'#160d05', accent:'#ff9f45', star:'#3a2410', boss:'OCTARCH',         neb:['#ff9f45','#7a3e10'] },
+  { name:'ENNEAGRAM',     bg:'#06141a', accent:'#5ad1ee', star:'#103038', boss:'NINEFOLD',        neb:['#5ad1ee','#124a5a'] },
+  { name:'DECAGRAM',      bg:'#1a0814', accent:'#ff6ba8', star:'#380a28', boss:'DECABOSS',        neb:['#ff6ba8','#7a1e4a'] },
+  { name:'ULTRAGON',      bg:'#0f1a05', accent:'#9bff5a', star:'#243a10', boss:'HENDECARCH',      neb:['#9bff5a','#3e6a15'] },
+  { name:'THE LIMIT',     bg:'#05060d', accent:'#ffffff', star:'#2a2a3a', boss:'PERIGEE',         neb:['#8a8ad0','#2a2a5a'] }, // circle = ∞ edges
 ];
 
 // build 10 levels. level i (0-based) headline edge = i+3, except level 9 = circle (0)
@@ -496,7 +624,7 @@ const LEVELS = LEVEL_THEME.map((th,i)=>{
   return {
     name: th.name,
     desc: `${polyWord.toLowerCase()} · ${3+i} waves`,
-    bg: th.bg, accent: th.accent, star: th.star,
+    bg: th.bg, accent: th.accent, star: th.star, neb: th.neb,
     waves: 3+i,
     baseCount: 3+i,
     perWave: 1+Math.floor(i/3),
@@ -595,6 +723,10 @@ function pollGamepad(){
   const upNow = held(2)||held(3);
   pad.upgrade = upNow && !pad._upgradePrev;
   pad._upgradePrev = upNow;
+  // start / menu button (9) = pause toggle, edge-triggered
+  const startNow = held(9);
+  pad.start = startNow && !pad._startPrev;
+  pad._startPrev = startNow;
 
   // --- menu navigation (edge-triggered so one press = one step) ---
   // use stick OR d-pad for direction; A(0)=confirm, B(1)=back
@@ -610,8 +742,8 @@ function pollGamepad(){
 // ---- gamepad menu navigation: makes every DOM menu controller-playable ----
 let gpFocusEl = null;
 function currentMenuScreen(){
-  // return the visible full-screen menu, if any (title / select / shop / overlay)
-  for(const s of [shopScreen, selectScreen, titleScreen, overlay]){
+  // return the visible full-screen menu, if any (pause / shop / select / title / overlay)
+  for(const s of [pauseScreen, shopScreen, selectScreen, titleScreen, overlay]){
     if(s && !s.classList.contains('hidden')) return s;
   }
   return null;
@@ -666,6 +798,10 @@ addEventListener('keydown', e=>{
   if(e.key.toLowerCase()==='k' && running){ for(let i=enemies.length-1;i>=0;i--) killEnemy(enemies[i]); } // DEBUG: clear all enemies
   if(e.key.toLowerCase()==='m'){ prefMuted=SFX.toggle(); saveProgress(); }
   if((e.key.toLowerCase()==='u'||e.key==='Enter') && upgradeReady && running && !paused){ openShop(); }
+  if(e.key==='Escape' || e.key.toLowerCase()==='p'){
+    if(running && !paused) pauseGame();
+    else if(!pauseScreen.classList.contains('hidden')) resumeGame();
+  }
 });
 addEventListener('keyup', e=>{
   keys[e.key.toLowerCase()]=false;
@@ -1101,6 +1237,7 @@ const SFX = (()=>{
   addEventListener(ev, ()=>{ SFX.resume(); SFX.setMuted(prefMuted); if(musicEnabled) SFX.setStyle(prefMusicStyle); }, {once:false, passive:true}));
 
 let player, bullets, ebullets, enemies, particles, stars;
+let nebTex=null, nebDepth=0.16;   // fractal-noise nebula texture + its parallax factor
 let score, wave, waveTimer, spawnQueue, running, frame, shootCd, shake, waveTotal;
 let level, levelIdx, cam, boss, bossActive, phase;
 // gems + roguelite upgrades
@@ -1131,9 +1268,10 @@ function startLevel(idx){
   upgrades={ dmgReduce:0, fireRate:0, orb:0, rocket:0, bomb:0, magnet:0, multishot:0, laser:0, stamina:0 };
   cam={x:player.x-VIEW/2,y:player.y-VIEW/2};
   makeStars();
+  makeNebulas();
   buildBossProg();
   running=true;
-  hud.classList.add('on'); touchControls=true; bossWrap.classList.remove('on');
+  hud.classList.add("on"); touchControls=true; pauseBtn.classList.add("on"); bossWrap.classList.remove("on");
   levelNameEl.textContent=(idx+1)+' · '+level.name;
   titleScreen.classList.add('hidden'); selectScreen.classList.add('hidden'); overlay.classList.add('hidden'); shopScreen.classList.add('hidden');
   bgm({level: idx});
@@ -1172,6 +1310,19 @@ function updateBossProg(){
 function makeStars(){
   stars=[];
   for(let i=0;i<120;i++) stars.push({ x:Math.random()*WORLD, y:Math.random()*WORLD, z:Math.random()*0.5+0.25, s:Math.random()<0.18?2:1 });
+}
+
+// build the tileable fractal-noise nebula texture for the current level
+function makeNebulas(){
+  const cols = (level.neb || ['#7dd3ff','#1f4a6e']);
+  const hot=cols[0], cool=mixHex(cols[1],'#000000',0.15);
+  // per-level "personality": cloud scale (bigger=coarser), density, parallax depth
+  const styleN = levelIdx % 5;
+  const scale  = [0.020, 0.028, 0.015, 0.024, 0.018][styleN];  // noise frequency
+  const dens   = [1.3, 1.1, 1.5, 1.15, 0.95][styleN];          // how thick the gas is
+  nebDepth     = [0.16, 0.22, 0.12, 0.20, 0.14][styleN];       // parallax factor
+  const seed = (levelIdx+1)*97 + 13;
+  nebTex = buildNebulaTexture(seed, '#000000', hot, cool, scale, dens);
 }
 
 function nextWave(){
@@ -1273,6 +1424,7 @@ function update(){
   if(shake>0) shake*=0.85;
 
   pollGamepad();
+  if(pad.start){ pauseGame(); return; }
   if(pad.upgrade && upgradeReady && running && !paused) openShop();
 
   let mvx=0,mvy=0;
@@ -1875,6 +2027,21 @@ function draw(){
   const ox=shake?(Math.random()-.5)*shake:0, oy=shake?(Math.random()-.5)*shake:0;
   const camx=cam.x+ox, camy=cam.y+oy;
 
+  // ---- nebula: blit the pre-rendered fractal-noise texture, tiled + parallax-scrolled ----
+  if(nebTex){
+    const prevOp = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = 'lighter';   // additive over the background
+    const S=NEB_SIZE;
+    // parallax offset, wrapped into [0,S)
+    let ox2 = ((-camx*nebDepth) % S + S) % S;
+    let oy2 = ((-camy*nebDepth) % S + S) % S;
+    // draw the texture tiled to cover the view (start one tile up-left)
+    for(let gx=-S+ox2; gx<VIEW; gx+=S)
+      for(let gy=-S+oy2; gy<VIEW; gy+=S)
+        ctx.drawImage(nebTex, Math.round(gx), Math.round(gy));
+    ctx.globalCompositeOperation = prevOp;
+  }
+
   for(const s of stars){
     const sx=s.x - camx*s.z, sy=s.y - camy*s.z;
     if(sx>-4&&sx<VIEW+4&&sy>-4&&sy<VIEW+4){ ctx.fillStyle=level.star; ctx.fillRect(Math.round(sx),Math.round(sy),s.s,s.s); }
@@ -2075,7 +2242,7 @@ function winLevel(){
   if(levelIdx+1<LEVELS.length) unlocked=Math.max(unlocked, levelIdx+2);
   if(score>bestScore) bestScore=score;
   saveProgress();
-  hud.classList.remove('on'); touchControls=false; bossWrap.classList.remove('on');
+  hud.classList.remove("on"); touchControls=false; pauseBtn.classList.remove("on"); bossWrap.classList.remove("on");
   const last=levelIdx===LEVELS.length-1, next=levelIdx+1;
   overlay.innerHTML=`
     <h1 style="font-size:clamp(40px,11vw,80px);color:var(--def)">SECTOR<br>CLEAR</h1>
@@ -2096,7 +2263,7 @@ function winLevel(){
 function loseLevel(){
   running=false; bossActive=false; SFX.lose(); bgm('menu');
   if(score>bestScore){ bestScore=score; saveProgress(); }
-  hud.classList.remove('on'); touchControls=false; bossWrap.classList.remove('on');
+  hud.classList.remove("on"); touchControls=false; pauseBtn.classList.remove("on"); bossWrap.classList.remove("on");
   const where = phase==='boss' ? `against <b>${level.boss.name}</b>` : `on wave <b>${wave}</b>`;
   overlay.innerHTML=`
     <h1 style="font-size:clamp(40px,11vw,80px)">DOWN</h1>
@@ -2115,7 +2282,7 @@ function loseLevel(){
 function openSelect(){
   running=false; paused=false;
   bgm('menu');
-  hud.classList.remove('on'); touchControls=false; bossWrap.classList.remove('on');
+  hud.classList.remove("on"); touchControls=false; pauseBtn.classList.remove("on"); bossWrap.classList.remove("on");
   titleScreen.classList.add('hidden'); overlay.classList.add('hidden'); shopScreen.classList.add('hidden');
   buildLevelList();
   selectScreen.classList.remove('hidden');
@@ -2201,7 +2368,9 @@ function loop(now){
     acc = 0;                                  // don't accumulate time while paused/menus
     // menus are controller-navigable: poll the pad and move the highlight
     pollGamepad();
-    menuNav();
+    // Start or B on the pause screen resumes play
+    if(!pauseScreen.classList.contains('hidden') && (pad.start || pad.back)){ resumeGame(); }
+    else menuNav();
   }
 }
 
