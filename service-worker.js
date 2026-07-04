@@ -1,6 +1,6 @@
 // STANCE — service worker. Caches the game shell so it loads instantly and works offline.
 // ⮕ THIS IS THE ONLY PLACE TO BUMP THE VERSION. The game reads it from here at runtime.
-const CACHE_VERSION = 'stance-v1.8';
+const CACHE_VERSION = 'edgelord-v1.91';
 const ASSETS = [
   './',
   'index.html',

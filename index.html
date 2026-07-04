@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>STANCE — auto-shooter</title>
+<title>EDGELORD — auto-shooter</title>
 <!-- PWA -->
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0b0d1a">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="STANCE">
+<meta name="apple-mobile-web-app-title" content="EDGELORD">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon-192.png">
 <style>
@@ -117,28 +117,53 @@
   #gemBar.full{border-color:#7dd3ff;box-shadow:0 0 8px rgba(125,211,255,.5)}
   #gemBar.full > i{background:#9ae0ff}
 
-  /* READY-to-upgrade signal: the whole bar pulses and invites a tap */
+  /* READY-to-upgrade signal: the bar still glows gold... */
   #gemHud.ready .gemTop .lbl{ color:#ffe9a8; }
-  #gemHud.ready #gemBar{
-    border-color:#ffd23d;
-    animation:gemPulse 0.9s ease-in-out infinite;
-  }
+  #gemHud.ready #gemBar{ border-color:#ffd23d; box-shadow:0 0 10px rgba(255,210,61,.7); }
   #gemHud.ready #gemBar > i{
     width:100% !important;
     background:linear-gradient(90deg,#ffb02e,#ffe9a8,#ffb02e);
     background-size:200% 100%;
     animation:gemShimmer 1.1s linear infinite;
   }
-  #gemTapHint{
-    display:none;color:#ffe9a8;font-size:11px;letter-spacing:2px;
+
+  /* ...and a prominent circular button appears, shaking + growing to say "press me" */
+  #upgradeBtn{
+    position:absolute;left:50%;bottom:84px;
+    width:96px;height:96px;border-radius:50%;
+    transform:translateX(-50%);
+    display:none;align-items:center;justify-content:center;
+    background:radial-gradient(circle at 50% 38%, #ffe9a8 0%, #ffc242 55%, #ff9b1e 100%);
+    border:3px solid #fff3c4;
+    color:#5a3a00;font-family:inherit;letter-spacing:1px;line-height:1.05;text-align:center;
+    box-shadow:0 0 0 4px rgba(255,210,61,.25), 0 0 22px 6px rgba(255,180,46,.55);
+    cursor:pointer;pointer-events:auto;z-index:40;padding:0;
   }
-  #gemHud.ready #gemTapHint{ display:inline; animation:gemBlink 0.9s steps(2,start) infinite; }
-  @keyframes gemPulse{
-    0%,100%{ box-shadow:0 0 6px rgba(255,210,61,.5); transform:translateY(0); }
-    50%    { box-shadow:0 0 16px rgba(255,210,61,.95); transform:translateY(-1px); }
+  #upgradeBtn .core{ font-size:13px; position:relative; z-index:2; }
+  #upgradeBtn .core b{ font-size:15px; letter-spacing:2px; }
+  #upgradeBtn .ring{
+    position:absolute;inset:-3px;border-radius:50%;
+    border:3px solid #ffe9a8;opacity:.0;
+    animation:upRing 1.4s ease-out infinite;
+  }
+  #upgradeBtn:active{ filter:brightness(1.1); }
+  #gemHud.ready ~ #upgradeBtn{ display:flex; animation:upPump 0.7s ease-in-out infinite, upShake 0.7s ease-in-out infinite; }
+
+  @keyframes upPump{
+    0%,100%{ transform:translateX(-50%) scale(1); }
+    50%    { transform:translateX(-50%) scale(1.16); }
+  }
+  /* shake is layered via a small rotate/translate wobble */
+  @keyframes upShake{
+    0%,100%{ margin-left:0; }
+    20%{ margin-left:-3px; } 40%{ margin-left:3px; }
+    60%{ margin-left:-2px; } 80%{ margin-left:2px; }
+  }
+  @keyframes upRing{
+    0%  { transform:scale(1); opacity:.8; }
+    100%{ transform:scale(1.7); opacity:0; }
   }
   @keyframes gemShimmer{ 0%{background-position:0% 0;} 100%{background-position:-200% 0;} }
-  @keyframes gemBlink{ 0%{opacity:1;} 50%{opacity:0.35;} 100%{opacity:1;} }
 
   /* upgrade shop */
   #shop{justify-content:center;gap:18px;background:rgba(8,10,20,.95)}
@@ -211,6 +236,10 @@
   }
   button:active{transform:translateY(4px);box-shadow:0 1px 0 #b13a47}
   button.ghost{background:transparent;color:var(--def);box-shadow:none;border:2px solid var(--def);padding:8px 22px;font-size:clamp(16px,3.6vw,22px)}
+  /* gamepad focus highlight (works on any focusable menu element) */
+  .gp-focus{ outline:3px solid var(--amber) !important; outline-offset:3px;
+             box-shadow:0 0 14px rgba(255,200,87,.7) !important; }
+  .lvl.gp-focus{ border-color:var(--amber) !important; }
   button.ghost:active{transform:translateY(2px)}
 
   #musicPick{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:14px}
@@ -279,9 +308,10 @@
     <div id="bossProg"><span class="skull">☠</span><div id="segs"></div></div>
     <div id="bossWrap"><div id="bossName">BOSS</div><div id="bossBar"><i></i></div></div>
     <div id="gemHud">
-      <div class="gemTop"><span class="lbl" id="gemLbl">◆ UPGRADE</span><span class="cnt"><span id="gemTapHint">TAP TO PICK ▸</span> <b id="gemNum">0</b><span id="gemGoalNum">/18</span></span></div>
+      <div class="gemTop"><span class="lbl" id="gemLbl">◆ UPGRADE</span><span class="cnt"><b id="gemNum">0</b><span id="gemGoalNum">/18</span></span></div>
       <div id="gemBar"><i></i></div>
     </div>
+    <button id="upgradeBtn"><span class="ring"></span><span class="core">⬆<br><b>UPGRADE</b></span></button>
     <div class="barLabel" id="hpLabel">HULL</div>
     <div class="bar" id="hpBar"><i></i></div>
     <div class="barLabel" id="staLabel">STAMINA</div>
@@ -292,12 +322,13 @@
   <div id="shop" class="screen hidden"></div>
 
   <div id="title" class="screen">
-    <h1><span class="o">STA</span><span class="d">NCE</span></h1>
-    <div class="tag">an auto-shooter with two minds</div>
+    <h1><span class="o">EDGE</span><span class="d">LORD</span></h1>
+    <div class="tag">every level, one more edge</div>
     <div class="help">
       You fire on your own. Your job is to <b>move</b> and to <b>switch which version of yourself you are</b>.<br><br>
       <span class="o">◆ OFFENSE</span> — guns blaze, full damage taken.<br>
       <span class="d">▣ DEFENSE</span> — a shield eats &amp; reflects bullets, but you stop firing. Burns stamina.<br><br>
+      <span style="color:#ffc857">Every sector adds an edge</span> — triangles, then squares, then pentagons… up to the circle: the shape with infinite edges.<br><br>
       <span id="controlsHint">
         <b>Move:</b> <span class="key">WASD / arrows</span> or drag &nbsp;·&nbsp;
         <b>Stance:</b> <span class="key">SPACE / SHIFT</span> or hold the button
@@ -338,7 +369,7 @@ const WORLD = 640;
   if(!el) return;
   const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
   const device = coarse?'MOBILE (touch)':'DESKTOP (mouse/kbd)';
-  const render = (ver)=>{ el.textContent = 'STANCE '+ver+' · '+device; };
+  const render = (ver)=>{ el.textContent = 'EDGELORD '+ver+' · '+device; };
   render('…');                         // until the SW answers
   function askVersion(){
     if(!('serviceWorker' in navigator)){ render('(no SW)'); return; }
@@ -391,6 +422,9 @@ function tryOpenShop(){
 }
 gemHudEl.addEventListener('click', tryOpenShop);
 gemHudEl.addEventListener('touchend', e=>{ e.preventDefault(); tryOpenShop(); }, {passive:false});
+const upgradeBtnEl = document.getElementById('upgradeBtn');
+upgradeBtnEl.addEventListener('click', tryOpenShop);
+upgradeBtnEl.addEventListener('touchend', e=>{ e.preventDefault(); e.stopPropagation(); tryOpenShop(); }, {passive:false});
 
 // music style picker (title screen)
 let musicEnabled = true;
@@ -531,6 +565,84 @@ function saveProgress(){
 
 const keys = {};
 let wantDefense=false;
+// ---- gamepad (PC controller) support ----
+const pad = { connected:false, mx:0, my:0, shield:false, upgrade:false, _upgradePrev:false,
+              navUp:false, navDown:false, navLeft:false, navRight:false, confirm:false, back:false,
+              _prev:{} };
+addEventListener('gamepadconnected',    e=>{ pad.connected=true; });
+addEventListener('gamepaddisconnected', e=>{ /* leave state; re-poll each frame */ });
+function pollGamepad(){
+  const gps = navigator.getGamepads ? navigator.getGamepads() : [];
+  let gp=null;
+  for(const g of gps){ if(g){ gp=g; break; } }
+  if(!gp){ pad.connected=false; pad.mx=0; pad.my=0; pad.shield=false;
+           pad.navUp=pad.navDown=pad.navLeft=pad.navRight=pad.confirm=pad.back=false; return; }
+  pad.connected=true;
+  const held = b => gp.buttons[b] && gp.buttons[b].pressed;
+  const edge = (name, cond) => { const now=!!cond; pad[name]= now && !pad._prev[name]; pad._prev[name]=now; };
+
+  // left stick = movement (axes 0,1). dead-zone to avoid drift.
+  let ax=gp.axes[0]||0, ay=gp.axes[1]||0;
+  const dz=0.18, mag=Math.hypot(ax,ay);
+  if(mag<dz){ ax=0; ay=0; }
+  pad.mx=ax; pad.my=ay;
+  if(held(14)) pad.mx=-1; if(held(15)) pad.mx=1;
+  if(held(12)) pad.my=-1; if(held(13)) pad.my=1;
+
+  // shield = hold trigger / A / bumper
+  pad.shield = held(7)||held(6)||held(0)||held(5);
+  // upgrade = X / Y edge
+  const upNow = held(2)||held(3);
+  pad.upgrade = upNow && !pad._upgradePrev;
+  pad._upgradePrev = upNow;
+
+  // --- menu navigation (edge-triggered so one press = one step) ---
+  // use stick OR d-pad for direction; A(0)=confirm, B(1)=back
+  const navThresh=0.5;
+  edge('navUp',    (gp.axes[1]||0) < -navThresh || held(12));
+  edge('navDown',  (gp.axes[1]||0) >  navThresh || held(13));
+  edge('navLeft',  (gp.axes[0]||0) < -navThresh || held(14));
+  edge('navRight', (gp.axes[0]||0) >  navThresh || held(15));
+  edge('confirm',  held(0));
+  edge('back',     held(1));
+}
+
+// ---- gamepad menu navigation: makes every DOM menu controller-playable ----
+let gpFocusEl = null;
+function currentMenuScreen(){
+  // return the visible full-screen menu, if any (title / select / shop / overlay)
+  for(const s of [shopScreen, selectScreen, titleScreen, overlay]){
+    if(s && !s.classList.contains('hidden')) return s;
+  }
+  return null;
+}
+function focusables(screen){
+  // ordered list of things the controller can land on within a screen
+  const els=[...screen.querySelectorAll('button, .card, .mpBtn, .lvl.open')];
+  return els.filter(e=> e.offsetParent!==null && !e.disabled);  // visible + enabled only
+}
+function setGpFocus(el){
+  if(gpFocusEl) gpFocusEl.classList.remove('gp-focus');
+  gpFocusEl = el || null;
+  if(gpFocusEl){ gpFocusEl.classList.add('gp-focus'); gpFocusEl.scrollIntoView({block:'nearest'}); }
+}
+function menuNav(){
+  const screen = currentMenuScreen();
+  if(!screen){ if(gpFocusEl) setGpFocus(null); return; }
+  const list = focusables(screen);
+  if(list.length===0){ if(gpFocusEl) setGpFocus(null); return; }
+  // (re)acquire focus if ours vanished (e.g. screen just changed)
+  if(!gpFocusEl || !list.includes(gpFocusEl)) setGpFocus(list[0]);
+  let idx = list.indexOf(gpFocusEl);
+  // vertical/horizontal move through the list (screens are mostly vertical stacks)
+  if(pad.navDown || pad.navRight){ idx=(idx+1)%list.length; setGpFocus(list[idx]); }
+  else if(pad.navUp || pad.navLeft){ idx=(idx-1+list.length)%list.length; setGpFocus(list[idx]); }
+  if(pad.confirm && gpFocusEl){ gpFocusEl.click(); }
+  if(pad.back){
+    // B = sensible "back": from select/shop/overlay go to a safe place
+    if(screen===selectScreen){ /* stay; no parent */ }
+  }
+}
 // ---- on-screen touch controls (mobile), both rendered on the canvas so they
 //      are guaranteed identical in size and mirrored in position. ----
 //      Left = movement joystick (floating). Right = hold-to-shield button.
@@ -995,6 +1107,7 @@ let level, levelIdx, cam, boss, bossActive, phase;
 let gems, gemCount, gemGoal, orbs, rockets, bombs, beams, upgrades, paused;
 let timeScale = 1;
 let upgradeReady = false;   // true when enough gems collected; player taps to open the shop
+let safeFrames = 0;         // consecutive frames the player has been "safe" (for auto-opening the shop)
 // briefly drop into slow motion for emphasis (boss kills, near-death). scale 0..1, dur in real ms
 function slowmo(scale){ timeScale = Math.min(timeScale, scale); }
 const GEM_TYPES = [
@@ -1159,6 +1272,9 @@ function update(){
   frame++;
   if(shake>0) shake*=0.85;
 
+  pollGamepad();
+  if(pad.upgrade && upgradeReady && running && !paused) openShop();
+
   let mvx=0,mvy=0;
   if(keys['a']||keys['arrowleft'])mvx-=1;
   if(keys['d']||keys['arrowright'])mvx+=1;
@@ -1166,6 +1282,13 @@ function update(){
   if(keys['s']||keys['arrowdown'])mvy+=1;
   const sp=1.8;
   if(mvx||mvy){const m=Math.hypot(mvx,mvy);player.x+=mvx/m*sp;player.y+=mvy/m*sp;}
+  // gamepad left stick: analog move, speed scaled by push (clamped to full speed)
+  if(pad.mx||pad.my){
+    const m=Math.min(1,Math.hypot(pad.mx,pad.my))||1;
+    const d=Math.hypot(pad.mx,pad.my)||1;
+    player.x += (pad.mx/d)*sp*m;
+    player.y += (pad.my/d)*sp*m;
+  }
   // virtual joystick: move in its direction, speed scaled by how far it's pushed
   if(joy.active && joy.mag>0.08){
     const d=Math.hypot(joy.dx,joy.dy)||1;
@@ -1180,7 +1303,8 @@ function update(){
   cam.x=Math.max(0,Math.min(WORLD-VIEW,cam.x));
   cam.y=Math.max(0,Math.min(WORLD-VIEW,cam.y));
 
-  const def = wantDefense && !player.staLock && player.sta>0;
+  const wantShield = wantDefense || pad.shield;
+  const def = wantShield && !player.staLock && player.sta>0;
   if(def && !player.defense) SFX.stanceOn();
   else if(!def && player.defense) SFX.stanceOff();
   player.defense=def;
@@ -1369,6 +1493,22 @@ function update(){
 
   for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.92;p.vy*=.92;p.life--;if(p.life<=0)particles.splice(i,1);}
   if(player.flash>0)player.flash--;
+
+  // --- auto-open the upgrade shop, but only during a safe lull (never mid-bullet-hell) ---
+  if(upgradeReady && running && !paused){
+    const DANGER_R = 46;                       // how close a threat must be to count as "danger"
+    let nearThreats = 0;
+    for(const b of ebullets){ if(dist(b.x,b.y,player.x,player.y) < DANGER_R) nearThreats++; }
+    for(const e of enemies){ if(dist(e.x,e.y,player.x,player.y) < DANGER_R+8) nearThreats++; }
+    if(bossActive && boss && dist(boss.x,boss.y,player.x,player.y) < DANGER_R+20) nearThreats+=3;
+    // "safe" = almost nothing close, not shielding under pressure, not just hit, decent HP
+    const safe = nearThreats<=1 && player.flash===0 && player.hp > player.maxHp*0.35;
+    if(safe) safeFrames++; else safeFrames=0;
+    // opened only after a full second of calm, so brief gaps in the chaos don't trigger it
+    if(safeFrames >= 60){ openShop(); safeFrames=0; }
+  } else {
+    safeFrames=0;
+  }
 
   hpFill.style.width=Math.max(0,player.hp)/player.maxHp*100+'%';
   staFill.style.width=player.sta/player.maxSta*100+'%';
@@ -2059,6 +2199,9 @@ function loop(now){
     draw();
   } else {
     acc = 0;                                  // don't accumulate time while paused/menus
+    // menus are controller-navigable: poll the pad and move the highlight
+    pollGamepad();
+    menuNav();
   }
 }
 
@@ -2078,9 +2221,9 @@ const isTouch = window.matchMedia && window.matchMedia('(pointer: coarse)').matc
       '<b>Upgrade:</b> <span class="key">tap the UPGRADE bar</span> when it glows';
   } else {
     el.innerHTML =
-      '<b>Move:</b> <span class="key">WASD</span> or <span class="key">arrow keys</span><br>' +
-      '<b>Shield:</b> hold <span class="key">SPACEBAR</span> (or <span class="key">SHIFT</span>) — release to fire again<br>' +
-      '<b>Upgrade:</b> press <span class="key">U</span> (or click the bar) when it glows';
+      '<b>Move:</b> <span class="key">WASD</span> / <span class="key">arrows</span> / <span class="key">controller stick</span><br>' +
+      '<b>Shield:</b> hold <span class="key">SPACE</span> / <span class="key">SHIFT</span> / <span class="key">controller trigger</span> — release to fire<br>' +
+      '<b>Upgrade:</b> <span class="key">U</span> / click the bar / <span class="key">controller X</span> when it glows';
   }
   // the M-key mute hint only applies to keyboard devices
   const mh = document.getElementById('muteHint');
