@@ -244,6 +244,26 @@
   button.ghost:active{transform:translateY(2px)}
 
   #musicPick{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:14px}
+  /* ship select */
+  #shipSelect{justify-content:flex-start;overflow-y:auto}
+  #shipGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;max-width:460px;width:100%;margin-top:10px}
+  @media (min-width:520px){ #shipGrid{grid-template-columns:repeat(3,1fr);max-width:640px} }
+  .shipCard{
+    background:rgba(125,211,255,.04);border:2px solid var(--grid);
+    border-radius:8px;padding:10px 8px;display:flex;flex-direction:column;align-items:center;gap:6px;
+    cursor:pointer;font-family:inherit;color:var(--ink);
+  }
+  .shipCard:active{transform:translateY(1px)}
+  .shipCard.sel{border-color:var(--amber);background:rgba(255,200,87,.08)}
+  .shipCard canvas{image-rendering:pixelated;width:64px;height:64px;background:#0c0a16;border-radius:4px}
+  .shipCard .sname{font-size:15px;letter-spacing:1px;color:var(--amber)}
+  .shipCard.sel .sname{color:#ffe9a8}
+  .shipCard .sblurb{font-size:11px;color:var(--dim);line-height:1.25;min-height:26px}
+  .shipStats{display:flex;flex-direction:column;gap:2px;width:100%;font-size:10px}
+  .statRow{display:flex;align-items:center;gap:4px}
+  .statRow .k{color:var(--dim);width:44px;text-align:right;letter-spacing:1px}
+  .statBar{flex:1;height:5px;background:#000;border:1px solid var(--grid);position:relative}
+  .statBar i{display:block;height:100%;background:var(--def)}
   #musicPick .mpLabel{color:var(--dim);font-size:clamp(13px,3vw,17px);letter-spacing:2px;margin-right:2px}
   .mpBtn{
     font-family:inherit;cursor:pointer;background:transparent;color:var(--dim);
@@ -348,6 +368,9 @@
       <span style="color:#7dd3ff">collect gems to unlock upgrades</span><span id="muteHint"> · <span style="color:#3a4060">M to mute</span></span>
     </div>
     <button id="startBtn">BEGIN</button>
+    <div style="display:flex;gap:10px;margin-top:4px">
+      <button class="ghost" id="shipBtn">CHOOSE SHIP</button>
+    </div>
     <div id="musicPick">
       <span class="mpLabel">MUSIC</span>
       <button class="mpBtn" data-style="chip">CHIP</button>
@@ -355,6 +378,13 @@
       <button class="mpBtn" data-style="pulse">PULSE</button>
       <button class="mpBtn mpOff" data-style="off">OFF</button>
     </div>
+  </div>
+
+  <div id="shipSelect" class="screen hidden">
+    <h2>SELECT SHIP</h2>
+    <div class="sub">each hull flies differently</div>
+    <div id="shipGrid"></div>
+    <button class="ghost" id="shipDoneBtn" style="margin-top:14px">DONE</button>
   </div>
 
   <div id="select" class="screen hidden">
@@ -387,6 +417,31 @@ cv.width = cv.height = VIEW;
 ctx.imageSmoothingEnabled = false;
 const WORLD = 640;
 const NEB_SIZE = 256;   // offscreen nebula texture size (tileable, scrolls with parallax)
+
+// ---- ship roster: each has a distinct silhouette AND distinct stats ----
+// stat fields (multipliers unless noted):
+//   hp      : max hull (absolute)
+//   speed   : movement speed multiplier
+//   armor   : incoming-damage reduction (0..0.4, additive with PLATING)
+//   luck    : gem-drop value/rarity bonus (0 = none, 0.3 = +30% richer drops)
+//   fire    : fire-rate multiplier (higher = faster)
+//   stamina : shield stamina pool multiplier
+// Draw functions are added below (drawShipSprite) keyed by id.
+const SHIPS = [
+  { id:'arrowhead', name:'ARROWHEAD', blurb:'Balanced all-rounder.',
+    hp:100, speed:1.0, armor:0,    luck:0,    fire:1.0, stamina:1.0 },
+  { id:'diamond',   name:'DIAMOND',   blurb:'Tough hull, a little slow.',
+    hp:130, speed:0.9, armor:0.12, luck:0,    fire:0.95,stamina:1.0 },
+  { id:'stealth',   name:'STEALTH',   blurb:'Fast and evasive, fragile.',
+    hp:80,  speed:1.25,armor:0,    luck:0.1,  fire:1.05,stamina:1.1 },
+  { id:'hexagon',   name:'BULWARK',   blurb:'Heavy armor, slow, low fire.',
+    hp:120, speed:0.85,armor:0.22, luck:0,    fire:0.9, stamina:1.2 },
+  { id:'star',      name:'LANCER',    blurb:'Glass cannon: fast fire, thin hull.',
+    hp:75,  speed:1.05,armor:0,    luck:0,    fire:1.35,stamina:0.9 },
+  { id:'crystal',   name:'PROSPECT',  blurb:'Lucky: far richer gem drops.',
+    hp:95,  speed:1.0, armor:0.05, luck:0.5,  fire:1.0, stamina:1.0 },
+];
+function shipById(id){ return SHIPS.find(s=>s.id===id) || SHIPS[0]; }
 // hex color + alpha (0..1) → "rgba(...)" string
 function hexA(hex, a){
   const h = hex.replace('#','');
@@ -521,6 +576,47 @@ const gemBarEl = document.getElementById('gemBar');
 const gemHudEl = document.getElementById('gemHud');
 const gemLblEl = document.getElementById('gemLbl');
 document.getElementById('startBtn').onclick = openSelect;
+
+// ---- ship select ----
+const shipSelectScreen = document.getElementById('shipSelect');
+const shipGridEl = document.getElementById('shipGrid');
+// normalize a stat to a 0..1 bar (rough ranges for display)
+function statBar(v, lo, hi){ return Math.max(0, Math.min(1, (v-lo)/(hi-lo))); }
+function buildShipGrid(){
+  shipGridEl.innerHTML='';
+  for(const s of SHIPS){
+    const card=document.createElement('button');
+    card.className='shipCard'+(s.id===prefShip?' sel':'');
+    card.dataset.id=s.id;
+    const cv=document.createElement('canvas'); cv.width=cv.height=40;
+    const cx=cv.getContext('2d'); cx.imageSmoothingEnabled=false;
+    cx.fillStyle='#0c0a16'; cx.fillRect(0,0,40,40);
+    // draw preview using the sprite table directly (offense colors)
+    const F=(col,rows)=>{ cx.fillStyle=col; for(const [x,y,w,h] of rows) cx.fillRect(20+x,20+y,w,h); };
+    (SHIP_SPRITES[s.id]||SHIP_SPRITES.arrowhead)(F,'#ff5d6c','#b8323f','#ffc857','#fff',true);
+    const stats=[
+      ['HP',    statBar(s.hp,70,140)],
+      ['SPEED', statBar(s.speed,0.8,1.3)],
+      ['ARMOR', statBar(s.armor,0,0.25)],
+      ['FIRE',  statBar(s.fire,0.85,1.4)],
+      ['LUCK',  statBar(s.luck,0,0.5)],
+    ];
+    const rows = stats.map(([k,v])=>`<div class="statRow"><span class="k">${k}</span><span class="statBar"><i style="width:${Math.round(v*100)}%"></i></span></div>`).join('');
+    card.appendChild(cv);
+    const nm=document.createElement('div'); nm.className='sname'; nm.textContent=s.name; card.appendChild(nm);
+    const bl=document.createElement('div'); bl.className='sblurb'; bl.textContent=s.blurb; card.appendChild(bl);
+    const st=document.createElement('div'); st.className='shipStats'; st.innerHTML=rows; card.appendChild(st);
+    card.onclick=()=>{
+      prefShip=s.id; saveProgress(); SFX.ui();
+      [...shipGridEl.children].forEach(c=>c.classList.toggle('sel', c.dataset.id===prefShip));
+    };
+    shipGridEl.appendChild(card);
+  }
+}
+function openShipSelect(){ buildShipGrid(); titleScreen.classList.add('hidden'); shipSelectScreen.classList.remove('hidden'); }
+function closeShipSelect(){ shipSelectScreen.classList.add('hidden'); titleScreen.classList.remove('hidden'); }
+document.getElementById('shipBtn').onclick = openShipSelect;
+document.getElementById('shipDoneBtn').onclick = closeShipSelect;
 
 // open the upgrade shop only when the player chooses to (taps the ready bar)
 function tryOpenShop(){
@@ -666,6 +762,7 @@ const cleared = new Set();
 let bestScore = 0;
 let prefMuted = false;
 let prefMusicStyle = 'chip';   // 'chip' | 'synth' | 'pulse' | 'off'
+let prefShip = 'arrowhead';    // selected ship id (default Arrowhead)
 
 function loadProgress(){
   try {
@@ -677,6 +774,7 @@ function loadProgress(){
       if(typeof s.bestScore === 'number') bestScore = s.bestScore;
       if(typeof s.muted === 'boolean') prefMuted = s.muted;
       if(typeof s.musicStyle === 'string') prefMusicStyle = s.musicStyle;
+      if(typeof s.ship === 'string') prefShip = s.ship;
     }
   } catch(e){ /* storage unavailable (e.g. sandbox) — stay in memory */ }
   if(DEBUG_UNLOCK_ALL) unlocked = 99;
@@ -684,7 +782,7 @@ function loadProgress(){
 function saveProgress(){
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      unlocked, cleared:[...cleared], bestScore, muted:prefMuted, musicStyle:prefMusicStyle
+      unlocked, cleared:[...cleared], bestScore, muted:prefMuted, musicStyle:prefMusicStyle, ship:prefShip
     }));
   } catch(e){ /* ignore */ }
 }
@@ -743,7 +841,7 @@ function pollGamepad(){
 let gpFocusEl = null;
 function currentMenuScreen(){
   // return the visible full-screen menu, if any (pause / shop / select / title / overlay)
-  for(const s of [pauseScreen, shopScreen, selectScreen, titleScreen, overlay]){
+  for(const s of [pauseScreen, shopScreen, shipSelectScreen, selectScreen, titleScreen, overlay]){
     if(s && !s.classList.contains('hidden')) return s;
   }
   return null;
@@ -1239,7 +1337,7 @@ const SFX = (()=>{
 let player, bullets, ebullets, enemies, particles, stars;
 let nebTex=null, nebDepth=0.16;   // fractal-noise nebula texture + its parallax factor
 let score, wave, waveTimer, spawnQueue, running, frame, shootCd, shake, waveTotal;
-let level, levelIdx, cam, boss, bossActive, phase;
+let level, levelIdx, cam, boss, bossActive, phase, ship;
 // gems + roguelite upgrades
 let gems, gemCount, gemGoal, orbs, rockets, bombs, beams, upgrades, paused;
 let timeScale = 1;
@@ -1257,7 +1355,10 @@ const GEM_TYPES = [
 function startLevel(idx){
   SFX.resume(); SFX.ui();
   levelIdx=idx; level=LEVELS[idx];
-  player={ x:WORLD/2, y:WORLD*0.62, r:5, hp:100, maxHp:100, sta:160, maxSta:160, defense:false, staLock:false, flash:0 };
+  ship = shipById(prefShip);
+  const baseSta = Math.round(160*ship.stamina);
+  player={ x:WORLD/2, y:WORLD*0.62, r:5, hp:ship.hp, maxHp:ship.hp,
+           sta:baseSta, maxSta:baseSta, defense:false, staLock:false, flash:0 };
   bullets=[]; ebullets=[]; enemies=[]; particles=[];
   score=0; wave=0; frame=0; shootCd=0; shake=0;
   boss=null; bossActive=false; phase='waves';
@@ -1432,7 +1533,7 @@ function update(){
   if(keys['d']||keys['arrowright'])mvx+=1;
   if(keys['w']||keys['arrowup'])mvy-=1;
   if(keys['s']||keys['arrowdown'])mvy+=1;
-  const sp=1.8;
+  const sp=1.8*(ship?ship.speed:1);
   if(mvx||mvy){const m=Math.hypot(mvx,mvy);player.x+=mvx/m*sp;player.y+=mvy/m*sp;}
   // gamepad left stick: analog move, speed scaled by push (clamped to full speed)
   if(pad.mx||pad.my){
@@ -1491,7 +1592,7 @@ function update(){
       // if more shots than distinct enemies, double up on the closest ones
       for(let i=n;i<wantShots;i++) fireAt(targets[i%targets.length].o, targets[i%targets.length].d);
     }
-    shootCd=Math.max(3, Math.round(9*Math.pow(0.85,upgrades.fireRate))); SFX.shoot();
+    shootCd=Math.max(2, Math.round(9*Math.pow(0.85,upgrades.fireRate)/(ship?ship.fire:1))); SFX.shoot();
   }
 
   if(phase==='waves'){
@@ -1678,7 +1779,8 @@ function update(){
 
 function damage(n){
   const red=[0,0.15,0.28,0.40,0.50][upgrades?upgrades.dmgReduce:0]||0;
-  n=n*(1-red);
+  const shipArmor = ship?ship.armor:0;
+  n=n*(1-red)*(1-shipArmor);
   const before=player.hp;
   player.hp-=n;
   if(n>=1){
@@ -1697,8 +1799,11 @@ function killEnemy(e){ const i=enemies.indexOf(e); if(i>=0)enemies.splice(i,1); 
 function dropGems(e){
   // higher-edge polygons are tougher → drop more, rarer gems
   const edges = e.edges===0?12:e.edges;   // circle counts as max
+  const luck = ship?ship.luck:0;
   let n = 1 + Math.floor((edges-3)/3);    // 3-5→1, 6-8→2, 9-11→3, circle→4
-  let bias = Math.floor((edges-3)/2);     // climbs with edge count
+  // luck: chance for a bonus gem, and a richer rarity bias
+  if(luck>0 && Math.random()<luck*0.6) n++;
+  let bias = Math.floor((edges-3)/2) + (luck>0 ? luck*2 : 0);
   for(let k=0;k<n;k++){
     const gt=pickGemType(bias);
     const a=Math.random()*6.283, s=Math.random()*0.8+0.3;
@@ -1953,6 +2058,47 @@ function pxDisc(cx,cy,r,col){
     ctx.fillRect(cx-dx, cy+dy, dx*2+1, 1);
   }
 }
+// abstract player emblem — fixed orientation, does not rotate. Reads as a small vessel/core.
+// sprite definitions (from the ship-select art), keyed by id
+const SHIP_SPRITES = {
+  arrowhead:(F,hull,dark,glow,w,pulse)=>{
+    F(hull,[[-1,-6,2,1],[-2,-5,4,1],[-3,-4,6,1],[-4,-3,8,1],[-5,-2,10,1],[-6,-1,12,1],[-6,0,3,1],[3,0,3,1],[-5,1,2,1],[3,1,2,1]]);
+    F(dark,[[-1,-4,2,3]]); F(glow,[[-1,-2,2,2]]); if(pulse)F(w,[[0,-2,1,1]]);
+  },
+  diamond:(F,hull,dark,glow,w,pulse)=>{
+    F(hull,[[-1,-6,2,1],[-2,-5,4,1],[-3,-4,6,1],[-4,-3,8,1],[-5,-2,10,1],[-6,-1,12,2],[-5,1,10,1],[-4,2,8,1],[-3,3,6,1],[-2,4,4,1],[-1,5,2,1]]);
+    F(dark,[[-2,-3,4,1],[-3,-2,6,1],[-4,-1,8,2],[-3,1,6,1],[-2,2,4,1]]);
+    F(glow,[[-1,-1,2,2]]); if(pulse)F(w,[[0,-1,1,2]]); F(glow,[[-6,-1,1,2],[5,-1,1,2]]);
+  },
+  stealth:(F,hull,dark,glow,w,pulse)=>{
+    F(hull,[[-1,-6,2,2],[-2,-4,4,2],[-3,-2,6,1],[-5,-1,10,1],[-5,0,10,1],[-3,1,6,1],[-2,2,4,2],[-1,4,2,2]]);
+    F(dark,[[-1,-3,2,5]]); F(glow,[[-1,-1,2,1]]); if(pulse)F(w,[[-1,0,2,1]]);
+  },
+  hexagon:(F,hull,dark,glow,w,pulse)=>{
+    F(hull,[[-2,-6,4,1],[-4,-5,8,1],[-5,-4,10,1],[-6,-3,12,1],[-6,-2,12,1],[-6,2,12,1],[-6,3,12,1],[-5,4,10,1],[-4,5,8,1],[-2,6,4,1],[-6,-2,1,4],[5,-2,1,4]]);
+    F(dark,[[-4,-2,8,4],[-3,-3,6,1],[-3,2,6,1]]); F(glow,[[-1,-1,2,2]]); if(pulse)F(w,[[0,0,1,1]]);
+  },
+  star:(F,hull,dark,glow,w,pulse)=>{
+    F(hull,[[-1,-7,2,3],[-1,4,2,3],[-7,-1,3,2],[4,-1,3,2],[-1,-4,2,1],[-2,-3,4,1],[-3,-2,6,1],[-4,-1,8,2],[-3,1,6,1],[-2,2,4,1],[-1,3,2,1]]);
+    F(dark,[[-2,-1,4,2],[-1,-2,2,1],[-1,1,2,1]]); F(glow,[[-1,-1,2,2]]); if(pulse)F(w,[[0,0,1,1]]);
+  },
+  crystal:(F,hull,dark,glow,w,pulse)=>{
+    F(hull,[[-1,-6,2,1],[-2,-5,4,1],[-3,-4,6,2],[-4,-2,8,1],[-4,-1,8,2],[-4,1,8,1],[-3,2,6,2],[-2,4,4,1],[-1,5,2,1]]);
+    F(dark,[[0,-4,3,2],[1,-2,3,3],[0,1,3,2]]); F(glow,[[-3,-3,1,6]]); if(pulse)F(w,[[-1,-1,2,2]]); else F(glow,[[-1,-1,2,2]]);
+  },
+};
+function drawShipSprite(cx, cy, id, defense, flash){
+  const hull = flash ? '#ffffff' : (defense ? '#3ddc97' : '#ff5d6c');
+  const dark = flash ? '#cfe8ff' : (defense ? '#1f9c6b' : '#b8323f');
+  const glow = defense ? '#9af5cf' : '#ffc857';
+  const F=(col, rows)=>{ ctx.fillStyle=col; for(const [x,y,w,h] of rows) ctx.fillRect(cx+x, cy+y, w, h); };
+  const pulse = (Math.floor(frame/8)%2)===0;
+  (SHIP_SPRITES[id]||SHIP_SPRITES.arrowhead)(F, hull, dark, glow, '#ffffff', pulse);
+}
+// draw the player's currently-selected ship
+function drawShip(cx, cy, defense, flash){
+  drawShipSprite(cx, cy, ship?ship.id:'arrowhead', defense, flash);
+}
 function pxRing(cx,cy,r,col){
   cx=Math.round(cx); cy=Math.round(cy); r=Math.round(r);
   ctx.fillStyle=col;
@@ -2134,15 +2280,12 @@ function draw(){
   for(const b of ebullets){ ctx.fillStyle=b.reflected?'#3ddc97':(b.boss?'#ffae6b':'#ff8d99'); const r=b.r>=3?3:2; ctx.fillRect(Math.round(sx(b.x))-1,Math.round(sy(b.y))-1,r,r); }
 
   const px=Math.round(sx(player.x)),py=Math.round(sy(player.y));
-  const pcol=player.flash>0?'#fff':(player.defense?'#3ddc97':'#ff5d6c');
-  ctx.fillStyle=pcol; ctx.fillRect(px-4,py-4,8,8);
-  ctx.fillStyle=level.bg; ctx.fillRect(px-2,py-2,4,4);
-  ctx.fillStyle=pcol; ctx.fillRect(px-1,py-1,2,2);
+  drawShip(px, py, player.defense, player.flash>0);
   if(player.defense){
     // pixel-art shield: solid ring, blinks brighter on a beat (no alpha blending)
-    pxRing(px,py,11,'#3ddc97');
-    if(Math.floor(frame/6)%2===0) pxRing(px,py,10,'#9af5cf');
-  } else { ctx.fillStyle='#ffc857'; ctx.fillRect(px-5,py-1,1,2); ctx.fillRect(px+4,py-1,1,2); }
+    pxRing(px,py,12,'#3ddc97');
+    if(Math.floor(frame/6)%2===0) pxRing(px,py,11,'#9af5cf');
+  }
 
   // orbiting orbs (bigger, with a faint trail ring)
   if(orbs) for(const o of orbs){
