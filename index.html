@@ -440,6 +440,8 @@ const SHIPS = [
     hp:75,  speed:1.05,armor:0,    luck:0,    fire:1.35,stamina:0.9 },
   { id:'crystal',   name:'PROSPECT',  blurb:'Lucky: far richer gem drops.',
     hp:95,  speed:1.0, armor:0.05, luck:0.5,  fire:1.0, stamina:1.0 },
+  { id:'saucer',    name:'VISITOR',   blurb:'Alien tech: tanky and lucky, slow.',
+    hp:115, speed:0.9, armor:0.15, luck:0.25, fire:0.95,stamina:1.1 },
 ];
 function shipById(id){ return SHIPS.find(s=>s.id===id) || SHIPS[0]; }
 // hex color + alpha (0..1) → "rgba(...)" string
@@ -636,6 +638,7 @@ function pauseGame(){
   paused=true; running=false;
   SFX.ui();
   pauseBtn.classList.remove('on');
+  gemHudEl.classList.remove('ready');       // hide the pulsing UPGRADE button while paused
   pauseScreen.classList.remove('hidden');
 }
 function resumeGame(){
@@ -859,20 +862,22 @@ function setGpFocus(el){
 function menuNav(){
   const screen = currentMenuScreen();
   if(!screen){ if(gpFocusEl) setGpFocus(null); return; }
+  // gamepad focus only matters when a controller is actually present & active.
+  // On mouse/keyboard, don't force a highlight onto the first item.
+  if(!pad.connected){ if(gpFocusEl) setGpFocus(null); return; }
   const list = focusables(screen);
   if(list.length===0){ if(gpFocusEl) setGpFocus(null); return; }
-  // (re)acquire focus if ours vanished (e.g. screen just changed)
+  const anyNav = pad.navDown||pad.navRight||pad.navUp||pad.navLeft||pad.confirm;
+  // don't grab focus until the player actually uses the stick/buttons
+  if(!gpFocusEl && !anyNav) return;
   if(!gpFocusEl || !list.includes(gpFocusEl)) setGpFocus(list[0]);
   let idx = list.indexOf(gpFocusEl);
-  // vertical/horizontal move through the list (screens are mostly vertical stacks)
   if(pad.navDown || pad.navRight){ idx=(idx+1)%list.length; setGpFocus(list[idx]); }
   else if(pad.navUp || pad.navLeft){ idx=(idx-1+list.length)%list.length; setGpFocus(list[idx]); }
   if(pad.confirm && gpFocusEl){ gpFocusEl.click(); }
-  if(pad.back){
-    // B = sensible "back": from select/shop/overlay go to a safe place
-    if(screen===selectScreen){ /* stay; no parent */ }
-  }
 }
+// clear gamepad focus highlight as soon as the mouse is used
+addEventListener('mousemove', ()=>{ if(gpFocusEl) setGpFocus(null); });
 // ---- on-screen touch controls (mobile), both rendered on the canvas so they
 //      are guaranteed identical in size and mirrored in position. ----
 //      Left = movement joystick (floating). Right = hold-to-shield button.
@@ -1340,6 +1345,8 @@ let score, wave, waveTimer, spawnQueue, running, frame, shootCd, shake, waveTota
 let level, levelIdx, cam, boss, bossActive, phase, ship;
 // gems + roguelite upgrades
 let gems, gemCount, gemGoal, orbs, rockets, bombs, beams, upgrades, paused;
+let shieldOnFrame=-999;          // frame the shield was last raised (for activation burst)
+let shieldHits=[];               // recent impact flares: {ang, life, col}
 let timeScale = 1;
 let upgradeReady = false;   // true when enough gems collected; player taps to open the shop
 let safeFrames = 0;         // consecutive frames the player has been "safe" (for auto-opening the shop)
@@ -1365,7 +1372,7 @@ function startLevel(idx){
   waveTotal=0;
   gems=[]; gemCount=0; gemGoal=18; paused=false; timeScale=1; upgradeReady=false;
   joy.active=false; joy.dx=0; joy.dy=0; joy.mag=0; shieldTouchId=null; wantDefense=false;
-  orbs=[]; rockets=[]; bombs=[]; beams=[];
+  orbs=[]; rockets=[]; bombs=[]; beams=[]; shieldOnFrame=-999; shieldHits=[];
   upgrades={ dmgReduce:0, fireRate:0, orb:0, rocket:0, bomb:0, magnet:0, multishot:0, laser:0, stamina:0 };
   cam={x:player.x-VIEW/2,y:player.y-VIEW/2};
   makeStars();
@@ -1558,7 +1565,7 @@ function update(){
 
   const wantShield = wantDefense || pad.shield;
   const def = wantShield && !player.staLock && player.sta>0;
-  if(def && !player.defense) SFX.stanceOn();
+  if(def && !player.defense){ SFX.stanceOn(); shieldOnFrame=frame; }
   else if(!def && player.defense) SFX.stanceOff();
   player.defense=def;
   if(def){ player.sta-=0.55*Math.pow(0.82,upgrades.stamina); if(player.sta<=0){player.sta=0;player.staLock=true;} }
@@ -1726,7 +1733,9 @@ function update(){
     const d=dist(b.x,b.y,player.x,player.y);
     if(player.defense && d<player.r+9 && !b.reflected){
       const nx=b.x-player.x,ny=b.y-player.y,nm=Math.hypot(nx,ny)||1,s=Math.hypot(b.vx,b.vy)*1.3;
-      b.vx=nx/nm*s; b.vy=ny/nm*s; b.reflected=true; spark(b.x,b.y,'#3ddc97',5); shake=2; SFX.reflect(); continue;
+      b.vx=nx/nm*s; b.vy=ny/nm*s; b.reflected=true; spark(b.x,b.y,'#3ddc97',5); shake=2; SFX.reflect();
+      shieldHits.push({ ang:Math.atan2(ny,nx), life:10, col:'#dffffb' });   // impact flare
+      continue;
     }
     if(!b.reflected && d<player.r+b.r){ damage(b.boss?12:8); spark(b.x,b.y,'#ff5d6c',6); ebullets.splice(i,1); }
   }
@@ -1864,6 +1873,7 @@ function rollShopChoices(){
 
 function openShop(){
   paused=true; running=false;
+  gemHudEl.classList.remove('ready');   // hide the pulsing UPGRADE button while the shop is open
   SFX.powerup();
   const choices = rollShopChoices();
   const cards = choices.map((u,idx)=>{
@@ -2086,6 +2096,29 @@ const SHIP_SPRITES = {
     F(hull,[[-1,-6,2,1],[-2,-5,4,1],[-3,-4,6,2],[-4,-2,8,1],[-4,-1,8,2],[-4,1,8,1],[-3,2,6,2],[-2,4,4,1],[-1,5,2,1]]);
     F(dark,[[0,-4,3,2],[1,-2,3,3],[0,1,3,2]]); F(glow,[[-3,-3,1,6]]); if(pulse)F(w,[[-1,-1,2,2]]); else F(glow,[[-1,-1,2,2]]);
   },
+  saucer:(F,hull,dark,glow,w,pulse)=>{
+    // classic flying-saucer: grey metallic disc, stance-tinted dome, blinking light-ports
+    const metal='#b8c0cc', metalD='#7a828f', metalDD='#565d6b';
+    // dome (uses stance glow so offense=amber, defense=cyan tint; flash overrides to white via hull)
+    const dome = (hull==='#ffffff') ? '#ffffff' : glow;
+    const domeHi = '#ffffff';
+    // top dome
+    F(dome,   [[-2,-6,4,1],[-3,-5,6,1],[-3,-4,6,1],[-3,-3,6,1]]);
+    F(domeHi, [[-2,-5,1,1],[-1,-5,1,1]]);        // dome shine
+    F(metalDD,[[-3,-2,6,1]]);                     // dome base shadow
+    // main hull disc (wide, flat)
+    F(metalD, [[-6,-1,12,1]]);
+    F(metal,  [[-7, 0,14,1]]);
+    F(metal,  [[-6, 1,12,1]]);
+    F(metalD, [[-4, 2, 8,1]]);
+    F(metalDD,[[-3, 3, 6,1]]);
+    // rim light-ports that blink
+    const lit = pulse ? '#ffe9a8' : '#8a7a3a';
+    const lit2 = pulse ? '#8a7a3a' : '#ffe9a8';
+    F(lit,  [[-6,0,1,1],[6,0,1,1]]);
+    F(lit2, [[-3,0,1,1],[3,0,1,1]]);
+    F(lit,  [[0,0,1,1]]);
+  },
 };
 function drawShipSprite(cx, cy, id, defense, flash){
   const hull = flash ? '#ffffff' : (defense ? '#3ddc97' : '#ff5d6c');
@@ -2099,6 +2132,81 @@ function drawShipSprite(cx, cy, id, defense, flash){
 function drawShip(cx, cy, defense, flash){
   drawShipSprite(cx, cy, ship?ship.id:'arrowhead', defense, flash);
 }
+
+// ---- modern energy shield: hex barrier + crackling electricity + impact flares ----
+function drawShield(cx, cy){
+  const age = frame - shieldOnFrame;
+  // activation burst: an expanding ring in the first ~10 frames
+  if(age < 10){
+    const br = 10 + age*2.2;
+    pxRingA(cx, cy, Math.round(br), '#dffffb', 1 - age/10);
+  }
+  const R = 12;
+  const shimmer = 0.5 + 0.5*Math.sin(frame*0.35);
+  // soft outer halo (a couple of faint rings that breathe)
+  ctx.globalAlpha = 0.16 + 0.10*shimmer;
+  pxRing(cx, cy, R+2, '#3ddc97');
+  ctx.globalAlpha = 1;
+  // rotating hexagonal barrier (fits the "edges" theme) — two hexes offset for a weave
+  const rot = frame*0.03;
+  strokeHex(cx, cy, R, rot, '#3ddc97');
+  strokeHex(cx, cy, R-2, rot+0.4, mixHex('#3ddc97','#9af5cf',0.6));
+  // bright inner ring core
+  ctx.globalAlpha = 0.7 + 0.3*shimmer;
+  pxRing(cx, cy, R-3, '#9af5cf');
+  ctx.globalAlpha = 1;
+  // crackling electricity: a few jagged arcs around the rim, redrawn each frame
+  const bolts = 3;
+  for(let b=0;b<bolts;b++){
+    // each bolt sits at a drifting base angle
+    const base = (frame*0.06) + b*(6.283/bolts) + Math.sin(frame*0.2+b)*0.3;
+    lightningArc(cx, cy, R-1, R+3, base, 0.9, (b%2)? '#9af5cf' : '#dffffb');
+  }
+  // occasional full "surge" — a brighter jagged loop when active a while
+  if((frame % 24) < 3){
+    const a0 = Math.random()*6.283;
+    lightningArc(cx, cy, R-2, R+4, a0, 2.2, '#ffffff');
+  }
+  // impact flares: bright arc + radial sparks where hits landed
+  for(const h of shieldHits){
+    const t = h.life/10;
+    const a = h.ang;
+    const fx = cx + Math.cos(a)*R, fy = cy + Math.sin(a)*R;
+    ctx.globalAlpha = t;
+    pxDisc(Math.round(fx), Math.round(fy), Math.round(1+t*3), '#ffffff');
+    // little arc spreading along the rim at the impact
+    lightningArc(cx, cy, R-1, R+4, a, 1.4*t, '#ffffff');
+    ctx.globalAlpha = 1;
+  }
+}
+// stroke a hexagon outline (pixel lines)
+function strokeHex(cx, cy, r, rot, col){
+  ctx.strokeStyle = col; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for(let i=0;i<=6;i++){
+    const a = rot + i*Math.PI/3;
+    const x = cx + Math.cos(a)*r, y = cy + Math.sin(a)*r;
+    if(i===0) ctx.moveTo(x+0.5,y+0.5); else ctx.lineTo(x+0.5,y+0.5);
+  }
+  ctx.stroke();
+}
+// a jagged lightning arc hugging the rim between rIn..rOut, centred on `ang`, spanning `spread` radians
+function lightningArc(cx, cy, rIn, rOut, ang, spread, col){
+  const steps = 6;
+  ctx.strokeStyle = col; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for(let i=0;i<=steps;i++){
+    const t = i/steps;
+    const a = ang - spread/2 + spread*t;
+    const jitter = (Math.random()-0.5) * (rOut-rIn);
+    const rr = (rIn+rOut)/2 + jitter;
+    const x = cx + Math.cos(a)*rr, y = cy + Math.sin(a)*rr;
+    if(i===0) ctx.moveTo(x+0.5,y+0.5); else ctx.lineTo(x+0.5,y+0.5);
+  }
+  ctx.stroke();
+}
+// pxRing with alpha
+function pxRingA(cx,cy,r,col,a){ ctx.globalAlpha=Math.max(0,Math.min(1,a)); pxRing(cx,cy,r,col); ctx.globalAlpha=1; }
 function pxRing(cx,cy,r,col){
   cx=Math.round(cx); cy=Math.round(cy); r=Math.round(r);
   ctx.fillStyle=col;
@@ -2281,11 +2389,9 @@ function draw(){
 
   const px=Math.round(sx(player.x)),py=Math.round(sy(player.y));
   drawShip(px, py, player.defense, player.flash>0);
-  if(player.defense){
-    // pixel-art shield: solid ring, blinks brighter on a beat (no alpha blending)
-    pxRing(px,py,12,'#3ddc97');
-    if(Math.floor(frame/6)%2===0) pxRing(px,py,11,'#9af5cf');
-  }
+  if(player.defense) drawShield(px, py);
+  // fade impact flares even if shield just dropped
+  for(let i=shieldHits.length-1;i>=0;i--){ if(--shieldHits[i].life<=0) shieldHits.splice(i,1); }
 
   // orbiting orbs (bigger, with a faint trail ring)
   if(orbs) for(const o of orbs){
