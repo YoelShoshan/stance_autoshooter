@@ -70,6 +70,7 @@
   #stanceTag{top:42px;font-size:clamp(20px,4.6vw,34px);letter-spacing:2px}
   #wave{position:absolute;top:12px;right:16px;color:var(--dim)}
   #score{position:absolute;top:42px;right:16px;color:var(--amber);font-size:clamp(20px,4.6vw,32px)}
+  #timer{position:absolute;top:calc(42px + clamp(24px,5vw,36px));right:16px;color:var(--dim);font-size:clamp(13px,2.9vw,17px);letter-spacing:.5px;font-variant-numeric:tabular-nums}
   #levelName{position:absolute;top:12px;left:14px;color:var(--dim);letter-spacing:1px}
 
   /* boss-approach progress (segments = waves, fills as you advance) */
@@ -295,6 +296,8 @@
   .lvl .meta{flex:1;min-width:0}
   .lvl .nm{font-size:clamp(20px,4.6vw,28px);letter-spacing:1px;color:var(--ink)}
   .lvl .ds{font-size:clamp(13px,3vw,17px);color:var(--dim);line-height:1.2}
+  .lvl .besttime{font-size:clamp(12px,2.7vw,15px);color:var(--amber);letter-spacing:.5px;margin-top:2px}
+  .lvl .flawmark{font-size:.9em;filter:drop-shadow(0 0 3px rgba(255,93,108,.8))}
   .lvl .badge{font-size:clamp(13px,3vw,17px);flex:none;letter-spacing:1px}
   .lvl .badge.lock{color:var(--dim)}
   .lvl .badge.star{color:var(--amber)}
@@ -337,6 +340,7 @@
     <div id="stanceTag" class="row">◆ OFFENSE</div>
     <div id="wave">WAVE 1</div>
     <div id="score">0</div>
+    <div id="timer">0.0s</div>
     <div id="bossProg"><span class="skull">☠</span><div id="segs"></div></div>
     <div id="bossWrap"><div id="bossName">BOSS</div><div id="bossBar"><i></i></div></div>
     <div id="gemHud">
@@ -444,6 +448,12 @@ const SHIPS = [
     hp:115, speed:0.9, armor:0.15, luck:0.25, fire:0.95,stamina:1.1 },
 ];
 function shipById(id){ return SHIPS.find(s=>s.id===id) || SHIPS[0]; }
+// format seconds as M:SS.d (or SS.d under a minute)
+function fmtTime(sec){
+  if(sec==null || !isFinite(sec)) return '—';
+  const m=Math.floor(sec/60), s=sec-m*60;
+  return m>0 ? `${m}:${s.toFixed(1).padStart(4,'0')}` : `${s.toFixed(1)}s`;
+}
 // hex color + alpha (0..1) → "rgba(...)" string
 function hexA(hex, a){
   const h = hex.replace('#','');
@@ -558,6 +568,7 @@ const staFill = document.querySelector('#staBar i');
 const stanceTag = document.getElementById('stanceTag');
 const waveEl = document.getElementById('wave');
 const scoreEl = document.getElementById('score');
+const timerEl = document.getElementById('timer');
 const bossProg = document.getElementById('bossProg');
 const segsEl = document.getElementById('segs');
 const levelNameEl = document.getElementById('levelName');
@@ -763,6 +774,7 @@ const DEBUG_UNLOCK_ALL = false;   // set true to open every level for testing
 let unlocked = 1;
 const cleared = new Set();
 let bestScore = 0;
+const bestTimes = {};          // { levelIndex: fastestClearSeconds }
 let prefMuted = false;
 let prefMusicStyle = 'chip';   // 'chip' | 'synth' | 'pulse' | 'off'
 let prefShip = 'arrowhead';    // selected ship id (default Arrowhead)
@@ -775,6 +787,8 @@ function loadProgress(){
       if(typeof s.unlocked === 'number') unlocked = s.unlocked;
       if(Array.isArray(s.cleared)) s.cleared.forEach(i=>cleared.add(i));
       if(typeof s.bestScore === 'number') bestScore = s.bestScore;
+      if(s.bestTimes && typeof s.bestTimes==='object'){ for(const k in s.bestTimes){ if(typeof s.bestTimes[k]==='number') bestTimes[k]=s.bestTimes[k]; } }
+      if(Array.isArray(s.flawless)) s.flawless.forEach(i=>flawless.add(i));
       if(typeof s.muted === 'boolean') prefMuted = s.muted;
       if(typeof s.musicStyle === 'string') prefMusicStyle = s.musicStyle;
       if(typeof s.ship === 'string') prefShip = s.ship;
@@ -785,7 +799,7 @@ function loadProgress(){
 function saveProgress(){
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      unlocked, cleared:[...cleared], bestScore, muted:prefMuted, musicStyle:prefMusicStyle, ship:prefShip
+      unlocked, cleared:[...cleared], bestScore, bestTimes, flawless:[...flawless], muted:prefMuted, musicStyle:prefMusicStyle, ship:prefShip
     }));
   } catch(e){ /* ignore */ }
 }
@@ -1347,6 +1361,8 @@ let level, levelIdx, cam, boss, bossActive, phase, ship;
 let gems, gemCount, gemGoal, orbs, rockets, bombs, beams, upgrades, paused;
 let shieldOnFrame=-999;          // frame the shield was last raised (for activation burst)
 let shieldHits=[];               // recent impact flares: {ang, life, col}
+let tookDamage=false;            // true if the player lost any HP this level (breaks flawless)
+const flawless = new Set();      // level indices cleared without taking damage
 let timeScale = 1;
 let upgradeReady = false;   // true when enough gems collected; player taps to open the shop
 let safeFrames = 0;         // consecutive frames the player has been "safe" (for auto-opening the shop)
@@ -1372,7 +1388,7 @@ function startLevel(idx){
   waveTotal=0;
   gems=[]; gemCount=0; gemGoal=18; paused=false; timeScale=1; upgradeReady=false;
   joy.active=false; joy.dx=0; joy.dy=0; joy.mag=0; shieldTouchId=null; wantDefense=false;
-  orbs=[]; rockets=[]; bombs=[]; beams=[]; shieldOnFrame=-999; shieldHits=[];
+  orbs=[]; rockets=[]; bombs=[]; beams=[]; shieldOnFrame=-999; shieldHits=[]; tookDamage=false;
   upgrades={ dmgReduce:0, fireRate:0, orb:0, rocket:0, bomb:0, magnet:0, multishot:0, laser:0, stamina:0 };
   cam={x:player.x-VIEW/2,y:player.y-VIEW/2};
   makeStars();
@@ -1778,6 +1794,7 @@ function update(){
   if(player.defense){stanceTag.textContent='▣ DEFENSE';stanceTag.style.color='var(--def)';}
   else{stanceTag.textContent='◆ OFFENSE';stanceTag.style.color=player.staLock?'var(--dim)':'var(--off)';}
   scoreEl.textContent=score;
+  timerEl.textContent=fmtTime(frame/60);
   gemNumEl.textContent=gemCount; gemGoalEl.textContent='/'+gemGoal;
   const gemPct=Math.min(100, gemCount/gemGoal*100);
   gemFill.style.width=gemPct+'%';
@@ -1792,6 +1809,7 @@ function damage(n){
   n=n*(1-red)*(1-shipArmor);
   const before=player.hp;
   player.hp-=n;
+  if(n>0) tookDamage=true;   // any real HP loss disqualifies a flawless clear
   if(n>=1){
     player.flash=6; shake=4; SFX.hurt();
     // emphasize a big hit, or one that drops you into the danger zone
@@ -2490,13 +2508,29 @@ function winLevel(){
   cleared.add(levelIdx); SFX.win(); bgm('menu');
   if(levelIdx+1<LEVELS.length) unlocked=Math.max(unlocked, levelIdx+2);
   if(score>bestScore) bestScore=score;
+  // clear time (frame is a fixed-60fps step counter → deterministic, lag-proof)
+  const clearTime = frame/60;
+  const prev = bestTimes[levelIdx];
+  const isRecord = (prev===undefined) || clearTime < prev;
+  if(isRecord) bestTimes[levelIdx] = clearTime;
+  // flawless = cleared without taking any HP damage
+  const isFlawless = !tookDamage;
+  if(isFlawless) flawless.add(levelIdx);
   saveProgress();
   hud.classList.remove("on"); touchControls=false; pauseBtn.classList.remove("on"); bossWrap.classList.remove("on");
   const last=levelIdx===LEVELS.length-1, next=levelIdx+1;
+  const timeLine = isRecord
+    ? `<div class="gostat" style="color:var(--amber)">time <b>${fmtTime(clearTime)}</b> · NEW BEST!</div>`
+    : `<div class="gostat" style="font-size:clamp(15px,3.4vw,20px);color:var(--dim)">time <b>${fmtTime(clearTime)}</b> · best <b>${fmtTime(bestTimes[levelIdx])}</b></div>`;
+  const flawlessLine = isFlawless
+    ? `<div class="gostat" style="color:#ff5d6c;font-size:clamp(17px,4vw,24px)">🍒 FLAWLESS · no damage taken</div>`
+    : '';
   overlay.innerHTML=`
     <h1 style="font-size:clamp(40px,11vw,80px);color:var(--def)">SECTOR<br>CLEAR</h1>
     <div class="gostat">${level.name} · score <b>${score}</b></div>
-    <div class="gostat" style="font-size:clamp(15px,3.4vw,20px);color:var(--dim)">best <b>${bestScore}</b></div>
+    ${timeLine}
+    ${flawlessLine}
+    <div class="gostat" style="font-size:clamp(15px,3.4vw,20px);color:var(--dim)">best score <b>${bestScore}</b></div>
     <div class="help">${ last
       ? 'You held both stances to the end of the line. There is nothing left to clear.'
       : 'A new sector is unlocked.' }</div>
@@ -2581,13 +2615,17 @@ function buildLevelList(){
     const open=(i+1)<=unlocked, done=cleared.has(i);
     const el=document.createElement('div');
     el.className='lvl '+(open?'open':'locked')+(done?' cleared':'');
+    const bt = bestTimes[i];
+    const timeStr = (done && bt!=null) ? `⏱ ${fmtTime(bt)}` : '';
+    const isFlaw = flawless.has(i);
     el.innerHTML=`
       <div class="swatch" style="background:${lv.accent}"></div>
       <div class="num">${i+1}</div>
       ${difficultyFace(i)}
       <div class="meta">
-        <div class="nm">${lv.name}</div>
+        <div class="nm">${lv.name}${ isFlaw ? ' <span class="flawmark" title="Flawless — cleared without taking damage">🍒</span>' : '' }</div>
         <div class="ds">${lv.desc} · boss: ${lv.boss.name}</div>
+        ${ timeStr ? `<div class="besttime">best time ${timeStr}${ isFlaw ? ' · <span style="color:#ff5d6c">FLAWLESS</span>' : '' }</div>` : '' }
       </div>
       <div class="badge ${done?'star':'lock'}">${ done?'★ CLEAR' : (open?'▶' : '🔒') }</div>`;
     if(open) el.onclick=()=>startLevel(i);
