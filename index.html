@@ -297,6 +297,7 @@
   .lvl .nm{font-size:clamp(20px,4.6vw,28px);letter-spacing:1px;color:var(--ink)}
   .lvl .ds{font-size:clamp(13px,3vw,17px);color:var(--dim);line-height:1.2}
   .lvl .besttime{font-size:clamp(12px,2.7vw,15px);color:var(--amber);letter-spacing:.5px;margin-top:2px}
+  .lvl .besttime.flaw{color:#ff8a95}
   .lvl .flawmark{font-size:.9em;filter:drop-shadow(0 0 3px rgba(255,93,108,.8))}
   .lvl .badge{font-size:clamp(13px,3vw,17px);flex:none;letter-spacing:1px}
   .lvl .badge.lock{color:var(--dim)}
@@ -774,7 +775,8 @@ const DEBUG_UNLOCK_ALL = false;   // set true to open every level for testing
 let unlocked = 1;
 const cleared = new Set();
 let bestScore = 0;
-const bestTimes = {};          // { levelIndex: fastestClearSeconds }
+const bestTimes = {};          // { levelIndex: fastest clear seconds (any run) }
+const bestFlawlessTimes = {};  // { levelIndex: fastest clear seconds among no-damage runs }
 let prefMuted = false;
 let prefMusicStyle = 'chip';   // 'chip' | 'synth' | 'pulse' | 'off'
 let prefShip = 'arrowhead';    // selected ship id (default Arrowhead)
@@ -789,6 +791,7 @@ function loadProgress(){
       if(typeof s.bestScore === 'number') bestScore = s.bestScore;
       if(s.bestTimes && typeof s.bestTimes==='object'){ for(const k in s.bestTimes){ if(typeof s.bestTimes[k]==='number') bestTimes[k]=s.bestTimes[k]; } }
       if(Array.isArray(s.flawless)) s.flawless.forEach(i=>flawless.add(i));
+      if(s.bestFlawlessTimes && typeof s.bestFlawlessTimes==='object'){ for(const k in s.bestFlawlessTimes){ if(typeof s.bestFlawlessTimes[k]==='number') bestFlawlessTimes[k]=s.bestFlawlessTimes[k]; } }
       if(typeof s.muted === 'boolean') prefMuted = s.muted;
       if(typeof s.musicStyle === 'string') prefMusicStyle = s.musicStyle;
       if(typeof s.ship === 'string') prefShip = s.ship;
@@ -799,7 +802,7 @@ function loadProgress(){
 function saveProgress(){
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      unlocked, cleared:[...cleared], bestScore, bestTimes, flawless:[...flawless], muted:prefMuted, musicStyle:prefMusicStyle, ship:prefShip
+      unlocked, cleared:[...cleared], bestScore, bestTimes, bestFlawlessTimes, flawless:[...flawless], muted:prefMuted, musicStyle:prefMusicStyle, ship:prefShip
     }));
   } catch(e){ /* ignore */ }
 }
@@ -2510,26 +2513,37 @@ function winLevel(){
   if(score>bestScore) bestScore=score;
   // clear time (frame is a fixed-60fps step counter → deterministic, lag-proof)
   const clearTime = frame/60;
-  const prev = bestTimes[levelIdx];
-  const isRecord = (prev===undefined) || clearTime < prev;
-  if(isRecord) bestTimes[levelIdx] = clearTime;
-  // flawless = cleared without taking any HP damage
   const isFlawless = !tookDamage;
+  // general best time (any run)
+  const prevBest = bestTimes[levelIdx];
+  const isRecord = (prevBest===undefined) || clearTime < prevBest;
+  if(isRecord) bestTimes[levelIdx] = clearTime;
+  // best flawless time (no-damage runs only)
+  const prevFlaw = bestFlawlessTimes[levelIdx];
+  const isFlawRecord = isFlawless && ((prevFlaw===undefined) || clearTime < prevFlaw);
+  if(isFlawRecord) bestFlawlessTimes[levelIdx] = clearTime;
   if(isFlawless) flawless.add(levelIdx);
   saveProgress();
   hud.classList.remove("on"); touchControls=false; pauseBtn.classList.remove("on"); bossWrap.classList.remove("on");
   const last=levelIdx===LEVELS.length-1, next=levelIdx+1;
-  const timeLine = isRecord
-    ? `<div class="gostat" style="color:var(--amber)">time <b>${fmtTime(clearTime)}</b> · NEW BEST!</div>`
-    : `<div class="gostat" style="font-size:clamp(15px,3.4vw,20px);color:var(--dim)">time <b>${fmtTime(clearTime)}</b> · best <b>${fmtTime(bestTimes[levelIdx])}</b></div>`;
-  const flawlessLine = isFlawless
-    ? `<div class="gostat" style="color:#ff5d6c;font-size:clamp(17px,4vw,24px)">🍒 FLAWLESS · no damage taken</div>`
+  // this run's time line
+  const runLine = isFlawless
+    ? `<div class="gostat" style="color:#ff5d6c;font-size:clamp(17px,4vw,24px)">🍒 FLAWLESS · <b>${fmtTime(clearTime)}</b>${ isFlawRecord ? ' · NEW BEST!' : '' }</div>`
+    : (isRecord
+        ? `<div class="gostat" style="color:var(--amber)">time <b>${fmtTime(clearTime)}</b> · NEW BEST!</div>`
+        : `<div class="gostat" style="font-size:clamp(15px,3.4vw,20px);color:var(--dim)">time <b>${fmtTime(clearTime)}</b></div>`);
+  // records summary: show whichever records exist
+  const recBits = [];
+  if(bestTimes[levelIdx]!=null) recBits.push(`best <b>${fmtTime(bestTimes[levelIdx])}</b>`);
+  if(bestFlawlessTimes[levelIdx]!=null) recBits.push(`🍒 best <b>${fmtTime(bestFlawlessTimes[levelIdx])}</b>`);
+  const recLine = recBits.length
+    ? `<div class="gostat" style="font-size:clamp(14px,3.2vw,19px);color:var(--dim)">${recBits.join(' · ')}</div>`
     : '';
   overlay.innerHTML=`
     <h1 style="font-size:clamp(40px,11vw,80px);color:var(--def)">SECTOR<br>CLEAR</h1>
     <div class="gostat">${level.name} · score <b>${score}</b></div>
-    ${timeLine}
-    ${flawlessLine}
+    ${runLine}
+    ${recLine}
     <div class="gostat" style="font-size:clamp(15px,3.4vw,20px);color:var(--dim)">best score <b>${bestScore}</b></div>
     <div class="help">${ last
       ? 'You held both stances to the end of the line. There is nothing left to clear.'
@@ -2615,9 +2629,12 @@ function buildLevelList(){
     const open=(i+1)<=unlocked, done=cleared.has(i);
     const el=document.createElement('div');
     el.className='lvl '+(open?'open':'locked')+(done?' cleared':'');
-    const bt = bestTimes[i];
-    const timeStr = (done && bt!=null) ? `⏱ ${fmtTime(bt)}` : '';
+    const bt = bestTimes[i], bft = bestFlawlessTimes[i];
     const isFlaw = flawless.has(i);
+    // build up to two time lines: general best, and flawless best
+    const timeBits = [];
+    if(done && bt!=null) timeBits.push(`<div class="besttime">best time ⏱ ${fmtTime(bt)}</div>`);
+    if(bft!=null) timeBits.push(`<div class="besttime flaw">🍒 best flawless ⏱ ${fmtTime(bft)}</div>`);
     el.innerHTML=`
       <div class="swatch" style="background:${lv.accent}"></div>
       <div class="num">${i+1}</div>
@@ -2625,7 +2642,7 @@ function buildLevelList(){
       <div class="meta">
         <div class="nm">${lv.name}${ isFlaw ? ' <span class="flawmark" title="Flawless — cleared without taking damage">🍒</span>' : '' }</div>
         <div class="ds">${lv.desc} · boss: ${lv.boss.name}</div>
-        ${ timeStr ? `<div class="besttime">best time ${timeStr}${ isFlaw ? ' · <span style="color:#ff5d6c">FLAWLESS</span>' : '' }</div>` : '' }
+        ${ timeBits.join('') }
       </div>
       <div class="badge ${done?'star':'lock'}">${ done?'★ CLEAR' : (open?'▶' : '🔒') }</div>`;
     if(open) el.onclick=()=>startLevel(i);
