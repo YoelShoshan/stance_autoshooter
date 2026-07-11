@@ -297,8 +297,9 @@
   .lvl .nm{font-size:clamp(20px,4.6vw,28px);letter-spacing:1px;color:var(--ink)}
   .lvl .ds{font-size:clamp(13px,3vw,17px);color:var(--dim);line-height:1.2}
   .lvl .besttime{font-size:clamp(12px,2.7vw,15px);color:var(--amber);letter-spacing:.5px;margin-top:2px}
-  .lvl .besttime.flaw{color:#ff8a95}
-  .lvl .flawmark{font-size:.9em;filter:drop-shadow(0 0 3px rgba(255,93,108,.8))}
+  .lvl .besttime.flaw{color:#7ff0d8}
+  .lvl .flawmark{filter:drop-shadow(0 0 3px rgba(127,240,216,.85))}
+  .gem{ filter:drop-shadow(0 0 2px rgba(127,240,216,.6)); }
   .lvl .badge{font-size:clamp(13px,3vw,17px);flex:none;letter-spacing:1px}
   .lvl .badge.lock{color:var(--dim)}
   .lvl .badge.star{color:var(--amber)}
@@ -454,6 +455,29 @@ function fmtTime(sec){
   if(sec==null || !isFinite(sec)) return '—';
   const m=Math.floor(sec/60), s=sec-m*60;
   return m>0 ? `${m}:${s.toFixed(1).padStart(4,'0')}` : `${s.toFixed(1)}s`;
+}
+// a pretty faceted diamond gem (inline SVG). `px` = pixel size. Marks a flawless clear.
+function diamondSVG(px=14){
+  const gid = 'gemG'+(diamondSVG._n=(diamondSVG._n||0)+1);
+  return `<svg class="gem" width="${px}" height="${px}" viewBox="0 0 16 16" style="vertical-align:-2px" xmlns="http://www.w3.org/2000/svg" shape-rendering="geometricPrecision">
+    <defs>
+      <linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#eafffb"/><stop offset="0.5" stop-color="#7ff0d8"/><stop offset="1" stop-color="#25b79a"/>
+      </linearGradient>
+    </defs>
+    <!-- crown -->
+    <polygon points="3,5 8,5 6,2 5,2" fill="#bff7ea"/>
+    <polygon points="8,5 13,5 11,2 10,2" fill="#8fead6"/>
+    <polygon points="5,2 11,2 8,5" fill="#eafffb"/>
+    <!-- table girdle -->
+    <rect x="3" y="5" width="10" height="1" fill="#d6fff6"/>
+    <!-- pavilion -->
+    <polygon points="3,6 13,6 8,14" fill="url(#${gid})"/>
+    <polygon points="3,6 8,6 6,10 5,7" fill="#a7f2e0" opacity="0.85"/>
+    <polygon points="8,14 6,10 8,6 10,10" fill="#3fd8bb" opacity="0.9"/>
+    <!-- sparkle -->
+    <rect x="5" y="3" width="1" height="1" fill="#ffffff"/>
+  </svg>`;
 }
 // hex color + alpha (0..1) → "rgba(...)" string
 function hexA(hex, a){
@@ -2528,14 +2552,14 @@ function winLevel(){
   const last=levelIdx===LEVELS.length-1, next=levelIdx+1;
   // this run's time line
   const runLine = isFlawless
-    ? `<div class="gostat" style="color:#ff5d6c;font-size:clamp(17px,4vw,24px)">🍒 FLAWLESS · <b>${fmtTime(clearTime)}</b>${ isFlawRecord ? ' · NEW BEST!' : '' }</div>`
+    ? `<div class="gostat" style="color:#7ff0d8;font-size:clamp(17px,4vw,24px)">${diamondSVG(20)} FLAWLESS · <b>${fmtTime(clearTime)}</b>${ isFlawRecord ? ' · NEW BEST!' : '' }</div>`
     : (isRecord
         ? `<div class="gostat" style="color:var(--amber)">time <b>${fmtTime(clearTime)}</b> · NEW BEST!</div>`
         : `<div class="gostat" style="font-size:clamp(15px,3.4vw,20px);color:var(--dim)">time <b>${fmtTime(clearTime)}</b></div>`);
   // records summary: show whichever records exist
   const recBits = [];
   if(bestTimes[levelIdx]!=null) recBits.push(`best <b>${fmtTime(bestTimes[levelIdx])}</b>`);
-  if(bestFlawlessTimes[levelIdx]!=null) recBits.push(`🍒 best <b>${fmtTime(bestFlawlessTimes[levelIdx])}</b>`);
+  if(bestFlawlessTimes[levelIdx]!=null) recBits.push(`${diamondSVG(13)} best <b>${fmtTime(bestFlawlessTimes[levelIdx])}</b>`);
   const recLine = recBits.length
     ? `<div class="gostat" style="font-size:clamp(14px,3.2vw,19px);color:var(--dim)">${recBits.join(' · ')}</div>`
     : '';
@@ -2634,13 +2658,13 @@ function buildLevelList(){
     // build up to two time lines: general best, and flawless best
     const timeBits = [];
     if(done && bt!=null) timeBits.push(`<div class="besttime">best time ⏱ ${fmtTime(bt)}</div>`);
-    if(bft!=null) timeBits.push(`<div class="besttime flaw">🍒 best flawless ⏱ ${fmtTime(bft)}</div>`);
+    if(bft!=null) timeBits.push(`<div class="besttime flaw">${diamondSVG(12)} best flawless ⏱ ${fmtTime(bft)}</div>`);
     el.innerHTML=`
       <div class="swatch" style="background:${lv.accent}"></div>
       <div class="num">${i+1}</div>
       ${difficultyFace(i)}
       <div class="meta">
-        <div class="nm">${lv.name}${ isFlaw ? ' <span class="flawmark" title="Flawless — cleared without taking damage">🍒</span>' : '' }</div>
+        <div class="nm">${lv.name}${ isFlaw ? ` <span class="flawmark" title="Flawless — cleared without taking damage">${diamondSVG(13)}</span>` : '' }</div>
         <div class="ds">${lv.desc} · boss: ${lv.boss.name}</div>
         ${ timeBits.join('') }
       </div>
